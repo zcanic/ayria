@@ -1,0 +1,13 @@
+{
+  "name": "ayria",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/desktop",
+    "packages/shared-schema"
+  ],
+  "scripts": {
+    "dev:desktop": "npm --workspace apps/desktop run dev",
+    "build:desktop": "npm --workspace apps/desktop run build"
+  }
+}

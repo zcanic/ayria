@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.vite/
+.pytest_cache/
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.env
+.env.*
+.DS_Store
+coverage/
+apps/runtime/.ruff_cache/
+apps/runtime/.mypy_cache/
+apps/runtime/jar.db
+apps/runtime/data/
