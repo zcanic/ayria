@@ -65,6 +65,32 @@ def test_chat_send_live_mode_with_unreachable_provider_fails_truthfully(runtime_
     assert 'All connection attempts failed' in body['error']
 
 
+def test_chat_send_live_mode_with_missing_model_reports_install_guidance(runtime_env: dict) -> None:
+    class FakeHealthOnlyProvider:
+        implemented = True
+        provider_id = 'ollama'
+
+        async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+            raise AssertionError('chat should not run when model is missing')
+
+        async def health_check(self, model: str | None = None) -> dict:
+            return {'configured': True, 'implemented': True, 'reachable': True, 'status': 'model_not_pulled'}
+
+    client = runtime_env['client']
+    container = runtime_env['container']
+    container.llm_providers['ollama'] = FakeHealthOnlyProvider()
+    container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
+    container.orchestrator._model_execution_service = container.model_execution_service
+
+    response = client.post('/api/v1/chat/send', json={'text': 'hello', 'image_paths': []})
+    assert response.status_code == 200
+    body = response.json()
+    assert body['status'] == 'failed'
+    assert body['provider_call_occurred'] is True
+    assert 'model_not_pulled:ollama:Qwen3.5-0.8B' in body['error']
+    assert 'ollama pull Qwen3.5-0.8B' in body['error']
+
+
 def test_chat_send_provider_unavailable_fails_truthfully(runtime_env: dict) -> None:
     client = runtime_env['client']
     container = runtime_env['container']

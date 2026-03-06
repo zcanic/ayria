@@ -16,6 +16,11 @@ class ModelExecutionService:
             raise RuntimeError(f'provider_unavailable:{provider_name}')
         if not bool(getattr(provider, 'implemented', False)):
             raise RuntimeError(f'provider_not_implemented:{provider_name}')
+        health = await self.check_provider_health(provider_name=provider_name, model=model)
+        if health.get('status') == 'model_not_pulled':
+            raise RuntimeError(
+                f"model_not_pulled:{provider_name}:{model}:Install it first with `ollama pull {model}`"
+            )
         return await provider.chat(messages=[{'role': 'user', 'content': text}], model=model, tools=None)
 
     async def check_provider_health(self, *, provider_name: str, model: str | None) -> dict:

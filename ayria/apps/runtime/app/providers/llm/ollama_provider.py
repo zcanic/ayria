@@ -48,9 +48,10 @@ class OllamaProvider:
 
         models = body.get('models', [])
         available_model_names = {item.get('name') for item in models if isinstance(item, dict)}
+        normalized_model_names = {name.split(':', 1)[0] for name in available_model_names if isinstance(name, str)}
         if model is None:
             status = 'ok'
-        elif model in available_model_names:
+        elif model in available_model_names or model in normalized_model_names:
             status = 'ok'
         else:
             status = 'model_not_pulled'
