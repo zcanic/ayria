@@ -29,7 +29,7 @@ class RuntimeContainer:
         }
 
         self.task_service = TaskService(self.task_repo)
-        self.context_service = ContextService(self.world_state_repo)
+        self.context_service = ContextService(self.world_state_repo, self.message_repo)
         self.presence_service = self._build_presence_service(last_proactive_ts=0.0)
         self.routing_service = RoutingService(default_chat_model=self.config.capability_model)
         self.persona_service = PersonaService()

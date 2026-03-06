@@ -212,13 +212,13 @@ Already produced in this repository:
 - detailed comments in key scaffold files
 - architecture docs for event protocol, API contracts, prompt policy, privacy, runtime policy, tool strategy, MCP strategy, skill strategy, and handoff guidance
 - runtime now includes `ModelExecutionService` with explicit stub/live mode semantics
+- runtime now includes a real Ollama adapter path for local inference work
 - in scaffold defaults, provider execution is intentionally non-live and reported as such
 
 ## 10. What Is Intentionally Not Done Yet
 
 Not done on purpose:
 - no real feature implementation
-- no real provider wiring
 - no real WebSocket server
 - no real database layer
 - no LoRA work

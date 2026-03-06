@@ -48,20 +48,21 @@ def test_chat_send_in_stub_mode_is_truthful(runtime_client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body['status'] == 'degraded'
+    assert body['execution_mode'] == 'synchronous'
     assert body['inference_mode'] == 'stub'
     assert body['provider_call_occurred'] is False
     assert body['task']['status'] == 'failed'
 
 
-def test_chat_send_live_mode_with_unimplemented_provider_fails_truthfully(runtime_client: TestClient) -> None:
+def test_chat_send_live_mode_with_unreachable_provider_fails_truthfully(runtime_client: TestClient) -> None:
     runtime_client.put('/api/v1/config', json={'provider_stub_mode': False})
     response = runtime_client.post('/api/v1/chat/send', json={'text': 'hello', 'image_paths': []})
     assert response.status_code == 200
     body = response.json()
     assert body['status'] == 'failed'
     assert body['inference_mode'] == 'provider_error'
-    assert body['provider_call_occurred'] is False
-    assert 'provider_not_implemented:ollama' in body['error']
+    assert body['provider_call_occurred'] is True
+    assert 'All connection attempts failed' in body['error']
 
 
 def test_chat_send_provider_unavailable_fails_truthfully(runtime_env: dict) -> None:
@@ -75,6 +76,7 @@ def test_chat_send_provider_unavailable_fails_truthfully(runtime_env: dict) -> N
     assert response.status_code == 200
     body = response.json()
     assert body['status'] == 'failed'
+    assert body['execution_mode'] == 'synchronous'
     assert body['provider_call_occurred'] is False
     assert 'provider_unavailable:ollama' in body['error']
 
@@ -82,9 +84,13 @@ def test_chat_send_provider_unavailable_fails_truthfully(runtime_env: dict) -> N
 def test_chat_send_provider_invalid_output_fails_truthfully(runtime_env: dict) -> None:
     class FakeBrokenProvider:
         implemented = True
+        provider_id = 'ollama'
 
         async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
             return {'provider': 'ollama', 'model': model, 'message': ''}
+
+        async def health_check(self, model: str | None = None) -> dict:
+            return {'configured': True, 'implemented': True, 'reachable': True, 'status': 'ok'}
 
     client = runtime_env['client']
     container = runtime_env['container']
@@ -96,9 +102,36 @@ def test_chat_send_provider_invalid_output_fails_truthfully(runtime_env: dict) -
     assert response.status_code == 200
     body = response.json()
     assert body['status'] == 'failed'
+    assert body['execution_mode'] == 'synchronous'
     assert body['inference_mode'] == 'provider_error'
     assert body['provider_call_occurred'] is True
     assert 'provider_empty_output' in body['error']
+
+
+def test_chat_send_live_mode_with_real_provider_path_is_completed(runtime_env: dict) -> None:
+    class FakeWorkingProvider:
+        implemented = True
+        provider_id = 'ollama'
+
+        async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+            return {'provider': 'ollama', 'model': model, 'message': 'real reply'}
+
+        async def health_check(self, model: str | None = None) -> dict:
+            return {'configured': True, 'implemented': True, 'reachable': True, 'status': 'ok'}
+
+    client = runtime_env['client']
+    container = runtime_env['container']
+    container.llm_providers['ollama'] = FakeWorkingProvider()
+    container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
+    container.orchestrator._model_execution_service = container.model_execution_service
+
+    response = client.post('/api/v1/chat/send', json={'text': 'hello', 'image_paths': []})
+    assert response.status_code == 200
+    body = response.json()
+    assert body['status'] == 'completed'
+    assert body['execution_mode'] == 'synchronous'
+    assert body['provider_call_occurred'] is True
+    assert body['assistant_message']['parts'][0]['text'] == 'real reply'
 
 
 def test_window_changed_updates_world_state(runtime_client: TestClient) -> None:
@@ -203,8 +236,9 @@ def test_providers_endpoint_reports_stub_and_health_semantics(runtime_client: Te
     ollama = next(item for item in providers['items'] if item['id'] == 'ollama')
     mlx = next(item for item in providers['items'] if item['id'] == 'mlx')
     assert ollama['configured'] is True
-    assert ollama['implemented'] is False
+    assert ollama['implemented'] is True
     assert ollama['active_in_runtime_mode'] is False
+    assert ollama['status'] == 'stub_mode'
     assert mlx['configured'] is False
 
     health = runtime_client.get('/api/v1/health/providers').json()
@@ -219,9 +253,9 @@ def test_providers_endpoint_reports_live_mode_not_implemented(runtime_client: Te
     assert providers['runtime_mode'] == 'live'
     ollama = next(item for item in providers['items'] if item['id'] == 'ollama')
     assert ollama['configured'] is True
-    assert ollama['implemented'] is False
-    assert ollama['active_in_runtime_mode'] is False
+    assert ollama['implemented'] is True
+    assert ollama['active_in_runtime_mode'] is True
 
     health = runtime_client.get('/api/v1/health/providers').json()
     ollama_health = next(item for item in health['providers'] if item['id'] == 'ollama')
-    assert ollama_health['status'] == 'not_implemented'
+    assert ollama_health['status'] == 'error:All connection attempts failed'

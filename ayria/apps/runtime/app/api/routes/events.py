@@ -15,16 +15,10 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 import asyncio
 import time
-from datetime import datetime, timezone
-
-from app.domain.models.world_state import ActiveWindow, PresenceState, ScreenshotSummary
+from app.domain.models.world_state import ActiveWindow, ScreenshotSummary
 from app.runtime_container import container
 
 router = APIRouter(prefix='/events', tags=['events'])
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 class WindowChangedRequest(BaseModel):
@@ -48,12 +42,7 @@ def window_changed(request: WindowChangedRequest) -> dict:
         )
     )
     updated = container.world_state_repo.set_presence(
-        PresenceState(
-            mode='idle',
-            user_active=True,
-            last_user_input_at=_now_iso(),
-            proactive_allowed=container.config.proactive_enabled,
-        )
+        container.presence_service.build_presence_state(mode='idle', user_active=True)
     )
     return {'accepted': True, 'event': 'window.changed', 'payload': request.model_dump(), 'world_state': updated.model_dump()}
 
@@ -61,12 +50,7 @@ def window_changed(request: WindowChangedRequest) -> dict:
 @router.post('/screenshot-captured')
 def screenshot_captured(request: ScreenshotCapturedRequest) -> dict:
     container.world_state_repo.set_presence(
-        PresenceState(
-            mode='observing',
-            user_active=True,
-            last_user_input_at=_now_iso(),
-            proactive_allowed=container.config.proactive_enabled,
-        )
+        container.presence_service.build_presence_state(mode='observing', user_active=True)
     )
 
     active_window = container.world_state_repo.get().active_window

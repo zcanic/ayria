@@ -5,6 +5,7 @@ providers are configured and healthy.
 """
 
 from fastapi import APIRouter
+import asyncio
 
 from app.runtime_container import container
 
@@ -15,26 +16,28 @@ def _provider_row(provider_id: str, default_model: str | None, configured: bool)
     provider = container.llm_providers.get(provider_id)
     implemented = bool(getattr(provider, 'implemented', False)) if provider is not None else False
     runtime_mode = 'stub' if container.config.provider_stub_mode else 'live'
-    active_in_runtime_mode = runtime_mode == 'live' and container.config.default_provider == provider_id and configured and implemented
     if runtime_mode == 'stub':
-        reachable = False
-        reachability_reason = 'stub_mode'
-    elif not implemented:
-        reachable = False
-        reachability_reason = 'not_implemented'
+        health = {
+            'configured': configured,
+            'implemented': implemented,
+            'reachable': False,
+            'status': 'stub_mode',
+        }
     else:
-        reachable = False
-        reachability_reason = 'not_probed'
+        health = asyncio.run(
+            container.model_execution_service.check_provider_health(provider_name=provider_id, model=default_model)
+        )
+    active_in_runtime_mode = runtime_mode == 'live' and container.config.default_provider == provider_id and configured and implemented
 
     return {
         'id': provider_id,
         'default_model': default_model,
-        'configured': configured,
-        'implemented': implemented,
-        'reachable': reachable,
+        'configured': health.get('configured', configured),
+        'implemented': health.get('implemented', implemented),
+        'reachable': health.get('reachable', False),
         'active_in_runtime_mode': active_in_runtime_mode,
         'runtime_mode': runtime_mode,
-        'reachability_reason': reachability_reason,
+        'status': health.get('status', 'unknown'),
     }
 
 

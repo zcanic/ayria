@@ -6,6 +6,7 @@ attempting model integrations.
 """
 
 from fastapi import APIRouter
+import asyncio
 
 from app.runtime_container import container
 
@@ -28,22 +29,25 @@ def get_provider_health() -> dict:
     def provider_status(provider_id: str, model: str | None, configured: bool) -> dict:
         provider = container.llm_providers.get(provider_id)
         implemented = bool(getattr(provider, 'implemented', False)) if provider is not None else False
-        active = runtime_mode == 'live' and configured and implemented and container.config.default_provider == provider_id
         if runtime_mode == 'stub':
-            status = 'stub_mode'
-        elif not configured:
-            status = 'not_configured'
-        elif not implemented:
-            status = 'not_implemented'
+            health = {
+                'configured': configured,
+                'implemented': implemented,
+                'reachable': False,
+                'status': 'stub_mode',
+            }
         else:
-            status = 'not_probed'
+            health = asyncio.run(
+                container.model_execution_service.check_provider_health(provider_name=provider_id, model=model)
+            )
+        active = runtime_mode == 'live' and health.get('configured', configured) and health.get('implemented', implemented) and container.config.default_provider == provider_id
         return {
             'id': provider_id,
-            'status': status,
+            'status': health.get('status', 'unknown'),
             'model': model,
-            'configured': configured,
-            'implemented': implemented,
-            'reachable': False,
+            'configured': health.get('configured', configured),
+            'implemented': health.get('implemented', implemented),
+            'reachable': health.get('reachable', False),
             'active_in_runtime_mode': active,
         }
 

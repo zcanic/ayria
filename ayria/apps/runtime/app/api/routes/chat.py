@@ -5,10 +5,11 @@ It should only translate HTTP requests into orchestrator calls.
 Business logic belongs in domain services.
 
 Implementation notes:
-- This route should be fast and should acknowledge task creation quickly.
-- Long-running model execution should later move to a task runner or async flow.
-- The desktop should get rich progress updates through WebSocket, not through
-  ever-growing chat route complexity.
+- In the current v1 scaffold, this route is synchronous by contract.
+- It still creates a task record for observability, but returns the final
+  result in the same request.
+- If background task execution is introduced later, update code and docs
+  together rather than leaving a half-synchronous API contract.
 """
 
 from fastapi import APIRouter

@@ -5,12 +5,16 @@ so the runtime can treat it similarly to other providers.
 """
 
 class MLXProvider:
+    provider_id = 'mlx'
     implemented = False
 
     async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+        raise RuntimeError('provider_not_implemented:mlx')
+
+    async def health_check(self, model: str | None = None) -> dict:
         return {
-            'provider': 'mlx',
-            'model': model,
-            'message': 'stub response',
-            'tools_used': tools or [],
+            'configured': model is not None,
+            'implemented': False,
+            'reachable': False,
+            'status': 'not_implemented',
         }

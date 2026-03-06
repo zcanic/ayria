@@ -9,5 +9,11 @@ from typing import Protocol
 
 
 class LLMProvider(Protocol):
+    provider_id: str
+    implemented: bool
+
     async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+        ...
+
+    async def health_check(self, model: str | None = None) -> dict:
         ...

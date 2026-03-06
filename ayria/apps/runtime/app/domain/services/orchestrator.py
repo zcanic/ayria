@@ -27,7 +27,6 @@ from datetime import datetime, timezone
 import asyncio
 
 from app.domain.models.message import ChatMessage, MessagePart
-from app.domain.models.world_state import PresenceState
 from app.domain.services.context_service import ContextService
 from app.domain.services.model_execution_service import ModelExecutionService
 from app.domain.services.persona_service import PersonaService
@@ -64,16 +63,13 @@ class Orchestrator:
         self._message_repo = message_repo
         self._world_state_repo = world_state_repo
 
-    def handle_user_message(self, text: str, image_paths: list[str] | None = None) -> dict:
-        now = _now_iso()
+    def _set_presence(self, *, mode: str, user_active: bool) -> None:
         self._world_state_repo.set_presence(
-            PresenceState(
-                mode='chatting',
-                user_active=True,
-                last_user_input_at=now,
-                proactive_allowed=False,
-            )
+            self._presence_service.build_presence_state(mode=mode, user_active=user_active)
         )
+
+    def handle_user_message(self, text: str, image_paths: list[str] | None = None) -> dict:
+        self._set_presence(mode='chatting', user_active=True)
 
         task = self._task_service.create_task(
             task_type='chat_reply',
@@ -82,10 +78,17 @@ class Orchestrator:
         )
         self._task_service.update_task(task.id, status='running')
 
+        user_message = ChatMessage(
+            id=f"user_{task.id}",
+            role='user',
+            source='ui',
+            parts=[MessagePart(type='text', text=text)],
+            created_at=_now_iso(),
+        )
+        self._message_repo.append(user_message)
+
         world_state = self._context_service.build_world_state()
         route = self._routing_service.choose_for_chat(has_images=bool(image_paths), current_world_state=world_state)
-
-        self._world_state_repo.append_recent_message(text)
 
         if self._model_execution_service.provider_stub_mode:
             updated = self._task_service.update_task(
@@ -98,16 +101,10 @@ class Orchestrator:
                     'reason': 'provider_stub_mode_enabled',
                 },
             )
-            self._world_state_repo.set_presence(
-                PresenceState(
-                    mode='idle',
-                    user_active=True,
-                    last_user_input_at=now,
-                    proactive_allowed=False,
-                )
-            )
+            self._set_presence(mode='idle', user_active=True)
             return {
                 'status': 'degraded',
+                'execution_mode': 'synchronous',
                 'taskId': task.id,
                 'task': updated.model_dump() if updated else task.model_dump(),
                 'route': route.model_dump(),
@@ -146,16 +143,10 @@ class Orchestrator:
                     'reason': reason,
                 },
             )
-            self._world_state_repo.set_presence(
-                PresenceState(
-                    mode='idle',
-                    user_active=True,
-                    last_user_input_at=now,
-                    proactive_allowed=False,
-                )
-            )
+            self._set_presence(mode='idle', user_active=True)
             return {
                 'status': 'failed',
+                'execution_mode': 'synchronous',
                 'taskId': task.id,
                 'task': updated.model_dump() if updated else task.model_dump(),
                 'route': route.model_dump(),
@@ -187,20 +178,14 @@ class Orchestrator:
                     'provider': provider_result.get('provider'),
                     'model': provider_result.get('model'),
                 },
-            },
-        )
-
-        self._world_state_repo.set_presence(
-            PresenceState(
-                mode='idle',
-                user_active=True,
-                last_user_input_at=now,
-                proactive_allowed=False,
+                },
             )
-        )
+
+        self._set_presence(mode='idle', user_active=True)
 
         return {
-            'status': 'accepted',
+            'status': 'completed',
+            'execution_mode': 'synchronous',
             'taskId': task.id,
             'task': updated.model_dump() if updated else task.model_dump(),
             'assistant_message': assistant_message.model_dump(),

@@ -28,8 +28,11 @@ What exists now:
 - detailed comments that explain implementation intent
 
 Default runtime mode is scaffold mode: `provider_stub_mode=true` in runtime config.
-Non-stub mode is available for integration work, but it fails truthfully unless a
-provider adapter is implemented for real inference.
+The runtime now includes a real Ollama adapter path for local inference work.
+Stub mode remains the default so contributors can distinguish clearly between:
+- scaffold behavior
+- truthful provider errors
+- actual local inference through Ollama
 
 ## Main Architectural Rule
 

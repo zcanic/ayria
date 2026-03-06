@@ -9,6 +9,15 @@ If a future agent starts scattering cooldown checks in UI code, route files, or
 prompt text, bring those rules back here.
 """
 
+from datetime import datetime, timezone
+
+from app.domain.models.world_state import PresenceState
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 class PresenceService:
     def __init__(
         self,
@@ -27,6 +36,14 @@ class PresenceService:
     @property
     def last_proactive_ts(self) -> float:
         return self._last_proactive_ts
+
+    def build_presence_state(self, *, mode: str, user_active: bool) -> PresenceState:
+        return PresenceState(
+            mode=mode,
+            user_active=user_active,
+            last_user_input_at=_now_iso(),
+            proactive_allowed=self._proactive_enabled,
+        )
 
     def classify_scene_type(self, *, active_app_name: str | None, active_window_title: str | None) -> str:
         text = f"{active_app_name or ''} {active_window_title or ''}".lower()

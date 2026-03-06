@@ -33,19 +33,23 @@ Purpose:
 
 This route should:
 - create a task
-- enqueue or execute the task
-- return an acceptance response quickly
+- execute the current v1 synchronous pipeline
+- return the final result together with task metadata
 
-It should not:
-- hold the HTTP request open for the full assistant pipeline unless a streaming mode is explicitly added later
+Current v1 contract:
+- synchronous request/response
+- task record still created for observability
+- response status should describe the real outcome: `completed`, `degraded`, or `failed`
 
 Recommended response shape:
 
 ```json
 {
-  "status": "accepted",
+  "status": "completed",
+  "execution_mode": "synchronous",
   "taskId": "task_123",
-  "requestId": "req_123"
+  "task": {},
+  "assistant_message": {}
 }
 ```
 

@@ -15,4 +15,6 @@ class AppConfig(BaseModel):
     screenshot_blocked_scene_types: list[str] = Field(default_factory=lambda: ['auth', 'payment', 'credential'])
     persona_intensity: str = 'normal'
     memory_enabled: bool = True
+    # Scaffold default: local inference is configured but intentionally disabled
+    # until a real provider path is verified.
     provider_stub_mode: bool = True
