@@ -5,6 +5,8 @@ result into the runtime's provider abstraction.
 """
 
 class OllamaProvider:
+    implemented = False
+
     async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
         return {
             'provider': 'ollama',

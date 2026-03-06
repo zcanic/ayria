@@ -14,4 +14,6 @@ class ModelExecutionService:
         provider = self._providers.get(provider_name)
         if provider is None:
             raise RuntimeError(f'provider_unavailable:{provider_name}')
+        if not bool(getattr(provider, 'implemented', False)):
+            raise RuntimeError(f'provider_not_implemented:{provider_name}')
         return await provider.chat(messages=[{'role': 'user', 'content': text}], model=model, tools=None)

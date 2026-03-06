@@ -1,13 +1,14 @@
 from fastapi.testclient import TestClient
 import pytest
 
+from app.domain.services.model_execution_service import ModelExecutionService
 from app.domain.services.presence_service import PresenceService
 from app.main import app
 from app.runtime_container import RuntimeContainer
 
 
 @pytest.fixture
-def runtime_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+def runtime_env(monkeypatch: pytest.MonkeyPatch) -> dict:
     test_container = RuntimeContainer()
 
     import app.api.routes.chat as chat_route
@@ -26,7 +27,12 @@ def runtime_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(tasks_route, 'container', test_container)
     monkeypatch.setattr(world_state_route, 'container', test_container)
 
-    return TestClient(app)
+    return {'client': TestClient(app), 'container': test_container}
+
+
+@pytest.fixture
+def runtime_client(runtime_env: dict) -> TestClient:
+    return runtime_env['client']
 
 
 def test_health_endpoint(runtime_client: TestClient) -> None:
@@ -47,6 +53,54 @@ def test_chat_send_in_stub_mode_is_truthful(runtime_client: TestClient) -> None:
     assert body['task']['status'] == 'failed'
 
 
+def test_chat_send_live_mode_with_unimplemented_provider_fails_truthfully(runtime_client: TestClient) -> None:
+    runtime_client.put('/api/v1/config', json={'provider_stub_mode': False})
+    response = runtime_client.post('/api/v1/chat/send', json={'text': 'hello', 'image_paths': []})
+    assert response.status_code == 200
+    body = response.json()
+    assert body['status'] == 'failed'
+    assert body['inference_mode'] == 'provider_error'
+    assert body['provider_call_occurred'] is False
+    assert 'provider_not_implemented:ollama' in body['error']
+
+
+def test_chat_send_provider_unavailable_fails_truthfully(runtime_env: dict) -> None:
+    client = runtime_env['client']
+    container = runtime_env['container']
+    container.llm_providers.pop('ollama', None)
+    container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
+    container.orchestrator._model_execution_service = container.model_execution_service
+
+    response = client.post('/api/v1/chat/send', json={'text': 'hello', 'image_paths': []})
+    assert response.status_code == 200
+    body = response.json()
+    assert body['status'] == 'failed'
+    assert body['provider_call_occurred'] is False
+    assert 'provider_unavailable:ollama' in body['error']
+
+
+def test_chat_send_provider_invalid_output_fails_truthfully(runtime_env: dict) -> None:
+    class FakeBrokenProvider:
+        implemented = True
+
+        async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+            return {'provider': 'ollama', 'model': model, 'message': ''}
+
+    client = runtime_env['client']
+    container = runtime_env['container']
+    container.llm_providers['ollama'] = FakeBrokenProvider()
+    container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
+    container.orchestrator._model_execution_service = container.model_execution_service
+
+    response = client.post('/api/v1/chat/send', json={'text': 'hello', 'image_paths': []})
+    assert response.status_code == 200
+    body = response.json()
+    assert body['status'] == 'failed'
+    assert body['inference_mode'] == 'provider_error'
+    assert body['provider_call_occurred'] is True
+    assert 'provider_empty_output' in body['error']
+
+
 def test_window_changed_updates_world_state(runtime_client: TestClient) -> None:
     response = runtime_client.post(
         '/api/v1/events/window-changed',
@@ -56,6 +110,7 @@ def test_window_changed_updates_world_state(runtime_client: TestClient) -> None:
     body = response.json()
     assert body['world_state']['active_window']['app_name'] == 'Cursor'
     assert body['world_state']['active_window']['window_title'] == 'main.py'
+    assert body['world_state']['presence']['mode'] == 'idle'
 
 
 def test_screenshot_ingestion_allowed_path(runtime_client: TestClient) -> None:
@@ -69,6 +124,7 @@ def test_screenshot_ingestion_allowed_path(runtime_client: TestClient) -> None:
     assert body['policy_blocked'] is False
     assert body['analyzed'] is True
     assert body['stored'] is True
+    assert body['world_state']['presence']['mode'] == 'observing'
 
 
 def test_screenshot_ingestion_blocked_path(runtime_client: TestClient) -> None:
@@ -139,3 +195,33 @@ def test_config_update_changes_runtime_behavior(runtime_client: TestClient) -> N
     screenshot_body = screenshot_response.json()
     assert screenshot_body['policy_blocked'] is True
     assert screenshot_body['policy_reason'] == 'screenshot_disabled'
+
+
+def test_providers_endpoint_reports_stub_and_health_semantics(runtime_client: TestClient) -> None:
+    providers = runtime_client.get('/api/v1/providers').json()
+    assert providers['runtime_mode'] == 'stub'
+    ollama = next(item for item in providers['items'] if item['id'] == 'ollama')
+    mlx = next(item for item in providers['items'] if item['id'] == 'mlx')
+    assert ollama['configured'] is True
+    assert ollama['implemented'] is False
+    assert ollama['active_in_runtime_mode'] is False
+    assert mlx['configured'] is False
+
+    health = runtime_client.get('/api/v1/health/providers').json()
+    assert health['runtime_mode'] == 'stub'
+    ollama_health = next(item for item in health['providers'] if item['id'] == 'ollama')
+    assert ollama_health['status'] == 'stub_mode'
+
+
+def test_providers_endpoint_reports_live_mode_not_implemented(runtime_client: TestClient) -> None:
+    runtime_client.put('/api/v1/config', json={'provider_stub_mode': False})
+    providers = runtime_client.get('/api/v1/providers').json()
+    assert providers['runtime_mode'] == 'live'
+    ollama = next(item for item in providers['items'] if item['id'] == 'ollama')
+    assert ollama['configured'] is True
+    assert ollama['implemented'] is False
+    assert ollama['active_in_runtime_mode'] is False
+
+    health = runtime_client.get('/api/v1/health/providers').json()
+    ollama_health = next(item for item in health['providers'] if item['id'] == 'ollama')
+    assert ollama_health['status'] == 'not_implemented'

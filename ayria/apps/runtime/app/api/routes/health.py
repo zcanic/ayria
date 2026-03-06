@@ -23,10 +23,39 @@ def get_health() -> dict:
 
 @router.get('/health/providers')
 def get_provider_health() -> dict:
+    runtime_mode = 'stub' if container.config.provider_stub_mode else 'live'
+
+    def provider_status(provider_id: str, model: str | None, configured: bool) -> dict:
+        provider = container.llm_providers.get(provider_id)
+        implemented = bool(getattr(provider, 'implemented', False)) if provider is not None else False
+        active = runtime_mode == 'live' and configured and implemented and container.config.default_provider == provider_id
+        if runtime_mode == 'stub':
+            status = 'stub_mode'
+        elif not configured:
+            status = 'not_configured'
+        elif not implemented:
+            status = 'not_implemented'
+        else:
+            status = 'not_probed'
+        return {
+            'id': provider_id,
+            'status': status,
+            'model': model,
+            'configured': configured,
+            'implemented': implemented,
+            'reachable': False,
+            'active_in_runtime_mode': active,
+        }
+
     return {
+        'runtime_mode': runtime_mode,
         'providers': [
-            {'id': 'ollama', 'status': 'unknown', 'model': container.config.capability_model},
-            {'id': 'mlx', 'status': 'unknown', 'model': container.config.persona_model},
-            {'id': 'cloud', 'status': 'unknown', 'model': container.config.fallback_model},
+            provider_status('ollama', container.config.capability_model, configured=container.config.capability_model is not None),
+            provider_status('mlx', container.config.persona_model, configured=container.config.persona_model is not None),
+            provider_status(
+                'cloud',
+                container.config.fallback_model,
+                configured=container.config.fallback_provider is not None and container.config.fallback_model is not None,
+            ),
         ]
     }

@@ -24,7 +24,7 @@ class ClipboardState(BaseModel):
 class ScreenshotSummary(BaseModel):
     image_id: str
     summary: str
-    detected_entities: list[str] = []
+    detected_entities: list[str] = Field(default_factory=list)
     scene_type: Literal['code', 'browser', 'document', 'chat', 'image', 'desktop', 'unknown'] = 'unknown'
     confidence: float = 0.0
 

@@ -16,12 +16,17 @@ class PresenceService:
         cooldown_seconds: int = 300,
         blacklisted_apps: list[str] | None = None,
         blocked_scene_types: list[str] | None = None,
+        last_proactive_ts: float = 0.0,
     ) -> None:
         self._proactive_enabled = proactive_enabled
         self._cooldown_seconds = cooldown_seconds
         self._blacklisted_apps = set(blacklisted_apps or [])
         self._blocked_scene_types = {item.lower() for item in (blocked_scene_types or [])}
-        self._last_proactive_ts = 0.0
+        self._last_proactive_ts = last_proactive_ts
+
+    @property
+    def last_proactive_ts(self) -> float:
+        return self._last_proactive_ts
 
     def classify_scene_type(self, *, active_app_name: str | None, active_window_title: str | None) -> str:
         text = f"{active_app_name or ''} {active_window_title or ''}".lower()

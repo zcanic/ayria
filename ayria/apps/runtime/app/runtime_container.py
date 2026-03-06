@@ -30,12 +30,7 @@ class RuntimeContainer:
 
         self.task_service = TaskService(self.task_repo)
         self.context_service = ContextService(self.world_state_repo)
-        self.presence_service = PresenceService(
-            proactive_enabled=self.config.proactive_enabled,
-            cooldown_seconds=self.config.proactive_cooldown_seconds,
-            blacklisted_apps=self.config.blacklisted_apps,
-            blocked_scene_types=self.config.screenshot_blocked_scene_types,
-        )
+        self.presence_service = self._build_presence_service(last_proactive_ts=0.0)
         self.routing_service = RoutingService(default_chat_model=self.config.capability_model)
         self.persona_service = PersonaService()
         self.model_execution_service = ModelExecutionService(
@@ -56,14 +51,10 @@ class RuntimeContainer:
         )
 
     def apply_config(self, next_config: AppConfig) -> None:
+        last_proactive_ts = self.presence_service.last_proactive_ts
         self.config = next_config
         self.routing_service = RoutingService(default_chat_model=self.config.capability_model)
-        self.presence_service = PresenceService(
-            proactive_enabled=self.config.proactive_enabled,
-            cooldown_seconds=self.config.proactive_cooldown_seconds,
-            blacklisted_apps=self.config.blacklisted_apps,
-            blocked_scene_types=self.config.screenshot_blocked_scene_types,
-        )
+        self.presence_service = self._build_presence_service(last_proactive_ts=last_proactive_ts)
         self.model_execution_service = ModelExecutionService(
             provider_stub_mode=self.config.provider_stub_mode,
             providers=self.llm_providers,
@@ -77,6 +68,15 @@ class RuntimeContainer:
             presence_service=self.presence_service,
             message_repo=self.message_repo,
             world_state_repo=self.world_state_repo,
+        )
+
+    def _build_presence_service(self, *, last_proactive_ts: float) -> PresenceService:
+        return PresenceService(
+            proactive_enabled=self.config.proactive_enabled,
+            cooldown_seconds=self.config.proactive_cooldown_seconds,
+            blacklisted_apps=self.config.blacklisted_apps,
+            blocked_scene_types=self.config.screenshot_blocked_scene_types,
+            last_proactive_ts=last_proactive_ts,
         )
 
 

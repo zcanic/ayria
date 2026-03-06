@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 import asyncio
 
 from app.domain.models.message import ChatMessage, MessagePart
+from app.domain.models.world_state import PresenceState
 from app.domain.services.context_service import ContextService
 from app.domain.services.model_execution_service import ModelExecutionService
 from app.domain.services.persona_service import PersonaService
@@ -64,6 +65,16 @@ class Orchestrator:
         self._world_state_repo = world_state_repo
 
     def handle_user_message(self, text: str, image_paths: list[str] | None = None) -> dict:
+        now = _now_iso()
+        self._world_state_repo.set_presence(
+            PresenceState(
+                mode='chatting',
+                user_active=True,
+                last_user_input_at=now,
+                proactive_allowed=False,
+            )
+        )
+
         task = self._task_service.create_task(
             task_type='chat_reply',
             payload={'text': text, 'image_paths': image_paths or []},
@@ -86,6 +97,14 @@ class Orchestrator:
                     'provider_call_occurred': False,
                     'reason': 'provider_stub_mode_enabled',
                 },
+            )
+            self._world_state_repo.set_presence(
+                PresenceState(
+                    mode='idle',
+                    user_active=True,
+                    last_user_input_at=now,
+                    proactive_allowed=False,
+                )
             )
             return {
                 'status': 'degraded',
@@ -113,15 +132,27 @@ class Orchestrator:
             if not raw_model_text:
                 raise RuntimeError('provider_empty_output')
         except Exception as error:
+            reason = str(error)
+            provider_call_occurred = not (
+                reason.startswith('provider_unavailable:') or reason.startswith('provider_not_implemented:')
+            )
             updated = self._task_service.update_task(
                 task.id,
                 status='failed',
                 output_payload={
                     'route': route.model_dump(),
                     'inference_mode': 'provider_error',
-                    'provider_call_occurred': True,
-                    'reason': str(error),
+                    'provider_call_occurred': provider_call_occurred,
+                    'reason': reason,
                 },
+            )
+            self._world_state_repo.set_presence(
+                PresenceState(
+                    mode='idle',
+                    user_active=True,
+                    last_user_input_at=now,
+                    proactive_allowed=False,
+                )
             )
             return {
                 'status': 'failed',
@@ -129,8 +160,8 @@ class Orchestrator:
                 'task': updated.model_dump() if updated else task.model_dump(),
                 'route': route.model_dump(),
                 'inference_mode': 'provider_error',
-                'provider_call_occurred': True,
-                'error': str(error),
+                'provider_call_occurred': provider_call_occurred,
+                'error': reason,
             }
 
         final_text = self._persona_service.rewrite(capability_text=raw_model_text, intensity='normal')
@@ -157,6 +188,15 @@ class Orchestrator:
                     'model': provider_result.get('model'),
                 },
             },
+        )
+
+        self._world_state_repo.set_presence(
+            PresenceState(
+                mode='idle',
+                user_active=True,
+                last_user_input_at=now,
+                proactive_allowed=False,
+            )
         )
 
         return {
