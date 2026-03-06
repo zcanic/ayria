@@ -27,6 +27,10 @@ What exists now:
 - shared schema placeholders
 - detailed comments that explain implementation intent
 
+Default runtime mode is scaffold mode: `provider_stub_mode=true` in runtime config.
+Non-stub mode is available for integration work, but it fails truthfully unless a
+provider adapter is implemented for real inference.
+
 ## Main Architectural Rule
 
 Do not collapse the system into a single chat endpoint.

@@ -211,6 +211,8 @@ Already produced in this repository:
 - scaffolded monorepo under `ayria/`
 - detailed comments in key scaffold files
 - architecture docs for event protocol, API contracts, prompt policy, privacy, runtime policy, tool strategy, MCP strategy, skill strategy, and handoff guidance
+- runtime now includes `ModelExecutionService` with explicit stub/live mode semantics
+- in scaffold defaults, provider execution is intentionally non-live and reported as such
 
 ## 10. What Is Intentionally Not Done Yet
 

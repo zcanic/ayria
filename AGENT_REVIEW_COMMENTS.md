@@ -1,5 +1,9 @@
 # AGENT_REVIEW_COMMENTS
 
+Status note: parts of this file were addressed in follow-up work. Check
+`AGENT_REVIEW_COMMENTS_ROUND2.md` and current runtime code before reapplying old
+instructions verbatim.
+
 This file is a direct review and modification instruction set for the next agent.
 It is intentionally concrete.
 Do not treat it as optional advice.
