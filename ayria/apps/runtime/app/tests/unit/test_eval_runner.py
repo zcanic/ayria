@@ -1,6 +1,8 @@
 from pathlib import Path
 import json
 
+import pytest
+
 from app.evals.catalog import list_scenario_paths
 from app.evals.runner import _effective_config_overrides, run_scenario
 from app.evals.schema_validation import validate_run_result_document, validate_scenario_document
@@ -9,7 +11,6 @@ from app.evals.schema_validation import validate_run_result_document, validate_s
 def test_basic_chat_exact_match_scenario_runs_with_fake_provider(monkeypatch) -> None:
     from app.evals import runtime_harness as harness
     from app.evals import runner as eval_runner
-    from app.domain.services.model_execution_service import ModelExecutionService
 
     original_runtime_client = harness.runtime_client
 
@@ -29,9 +30,7 @@ def test_basic_chat_exact_match_scenario_runs_with_fake_provider(monkeypatch) ->
     def fake_runtime_client(config_overrides: dict | None = None):
         ctx = original_runtime_client(config_overrides)
         client, container = ctx.__enter__()
-        container.llm_providers['ollama'] = FakeWorkingProvider()
-        container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
-        container.orchestrator._model_execution_service = container.model_execution_service
+        container.override_provider('ollama', FakeWorkingProvider())
 
         class _Wrapped:
             def __enter__(self):
@@ -55,7 +54,6 @@ def test_basic_chat_exact_match_scenario_runs_with_fake_provider(monkeypatch) ->
 def test_provider_health_scenario_runs_with_fake_provider(monkeypatch) -> None:
     from app.evals import runtime_harness as harness
     from app.evals import runner as eval_runner
-    from app.domain.services.model_execution_service import ModelExecutionService
 
     original_runtime_client = harness.runtime_client
 
@@ -75,9 +73,7 @@ def test_provider_health_scenario_runs_with_fake_provider(monkeypatch) -> None:
     def fake_runtime_client(config_overrides: dict | None = None):
         ctx = original_runtime_client(config_overrides)
         client, container = ctx.__enter__()
-        container.llm_providers['ollama'] = FakeHealthyProvider()
-        container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
-        container.orchestrator._model_execution_service = container.model_execution_service
+        container.override_provider('ollama', FakeHealthyProvider())
 
         class _Wrapped:
             def __enter__(self):
@@ -182,3 +178,68 @@ def test_eval_schema_validation_accepts_standard_scenario_and_result() -> None:
 
     result, _ = run_scenario(scenario_path, write_artifacts=False)
     validate_run_result_document(result.model_dump())
+
+
+def test_schema_match_uses_real_json_schema() -> None:
+    from app.evals.models import ScoreRule, StepResult
+    from app.evals.scoring import score_rule
+
+    steps = {
+        'send_chat': StepResult(
+            step_id='send_chat',
+            status='completed',
+            duration_ms=1,
+            response_status=200,
+            response_body={'status': 'completed'},
+        )
+    }
+
+    passing_rule = ScoreRule(
+        rule_id='response_status_schema',
+        type='schema_match',
+        target='steps.send_chat.response_body.status',
+        schema={'type': 'string', 'const': 'completed'},
+    )
+    failing_rule = ScoreRule(
+        rule_id='response_status_schema_bad',
+        type='schema_match',
+        target='steps.send_chat.response_body.status',
+        schema={'type': 'string', 'const': 'failed'},
+    )
+
+    assert score_rule(passing_rule, steps).passed is True
+    failed = score_rule(failing_rule, steps)
+    assert failed.passed is False
+    assert failed.details is not None
+
+
+def test_scenario_schema_rejects_schema_match_without_schema() -> None:
+    bad_document = {
+        'scenario_id': 'bad_schema_match',
+        'scenario_version': 'v1',
+        'purpose': 'test invalid schema_match rule',
+        'runtime_mode': 'stub',
+        'provider': 'ollama',
+        'model': 'qwen3.5:0.8b',
+        'config_overrides': {},
+        'fixture_refs': [],
+        'steps': [
+            {
+                'step_id': 'send_chat',
+                'kind': 'http_request',
+                'method': 'POST',
+                'path': '/api/v1/chat/send',
+                'payload': {'text': 'hello', 'image_paths': []},
+            }
+        ],
+        'scoring': [
+            {
+                'rule_id': 'bad_rule',
+                'type': 'schema_match',
+                'target': 'steps.send_chat.response_body.status',
+            }
+        ],
+    }
+
+    with pytest.raises(Exception):
+        validate_scenario_document(bad_document)

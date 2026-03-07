@@ -28,7 +28,10 @@
       "rule_id": "response_status",
       "type": "schema_match",
       "target": "steps.send_chat.response_body.status",
-      "expected": "completed"
+      "schema": {
+        "type": "string",
+        "const": "completed"
+      }
     },
     {
       "rule_id": "provider_model",

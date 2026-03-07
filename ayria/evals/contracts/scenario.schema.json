@@ -15,10 +15,12 @@
   ],
   "properties": {
     "scenario_id": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
     },
     "scenario_version": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^v[0-9]+$"
     },
     "purpose": {
       "type": "string"
@@ -66,17 +68,20 @@
       "required": ["step_id", "kind"],
       "properties": {
         "step_id": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$"
         },
         "kind": {
           "type": "string",
           "enum": ["http_request", "world_state_seed", "delay"]
         },
         "method": {
-          "type": "string"
+          "type": "string",
+          "enum": ["GET", "POST", "PUT"]
         },
         "path": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^/api/v1/"
         },
         "payload": {
           "type": "object"
@@ -88,14 +93,33 @@
           "type": "integer",
           "minimum": 0
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "kind": { "const": "http_request" } }
+          },
+          "then": {
+            "required": ["method", "path"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "kind": { "const": "delay" } }
+          },
+          "then": {
+            "required": ["delay_ms"]
+          }
+        }
+      ]
     },
     "score_rule": {
       "type": "object",
       "required": ["rule_id", "type", "target"],
       "properties": {
         "rule_id": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$"
         },
         "type": {
           "type": "string",
@@ -108,14 +132,44 @@
           ]
         },
         "target": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^steps\\.[A-Za-z_][A-Za-z0-9_]*\\."
         },
         "expected": {},
+        "schema": {
+          "type": "object"
+        },
         "max_ms": {
           "type": "integer",
           "minimum": 0
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "type": { "enum": ["exact_match", "substring_match", "policy_assertion"] } }
+          },
+          "then": {
+            "required": ["expected"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "schema_match" } }
+          },
+          "then": {
+            "required": ["schema"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "latency_budget" } }
+          },
+          "then": {
+            "required": ["max_ms"]
+          }
+        }
+      ]
     }
   }
 }

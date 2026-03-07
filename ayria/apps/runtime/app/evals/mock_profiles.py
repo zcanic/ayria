@@ -6,24 +6,10 @@ depending on fragile machine setup changes such as uninstalling a model.
 
 from __future__ import annotations
 
-from app.domain.services.model_execution_service import ModelExecutionService
-from app.providers.vision.screenshot_analyzer import ScreenshotAnalyzer
 from app.runtime_container import RuntimeContainer
 
 
 def apply_mock_profile(container: RuntimeContainer, profile: str) -> None:
-    def _rebind_runtime_services() -> None:
-        container.model_execution_service = ModelExecutionService(
-            provider_stub_mode=container.config.provider_stub_mode,
-            providers=container.llm_providers,
-        )
-        container.orchestrator._model_execution_service = container.model_execution_service
-        container.screenshot_analyzer = ScreenshotAnalyzer(
-            model_execution_service=container.model_execution_service,
-            provider_name=container.config.screenshot_analysis_provider,
-            model=container.config.screenshot_analysis_model,
-        )
-
     if profile == 'missing_model_ollama':
         class FakeMissingModelProvider:
             implemented = True
@@ -44,8 +30,7 @@ def apply_mock_profile(container: RuntimeContainer, profile: str) -> None:
                     'status': 'model_not_pulled',
                 }
 
-        container.llm_providers['ollama'] = FakeMissingModelProvider()
-        _rebind_runtime_services()
+        container.override_provider('ollama', FakeMissingModelProvider())
         return
 
     if profile == 'multimodal_ollama':
@@ -82,8 +67,7 @@ def apply_mock_profile(container: RuntimeContainer, profile: str) -> None:
                     'supports_images': True,
                 }
 
-        container.llm_providers['ollama'] = FakeMultimodalProvider()
-        _rebind_runtime_services()
+        container.override_provider('ollama', FakeMultimodalProvider())
         return
 
     raise ValueError(f'unsupported mock profile: {profile}')

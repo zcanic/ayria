@@ -128,7 +128,7 @@ def run_scenario(scenario_path: str | Path, *, write_artifacts: bool = True) -> 
             step_results.append(
                 StepResult(
                     step_id=step.step_id,
-                    status='completed' if response.status_code < 500 else 'failed',
+                    status='completed' if response.status_code < 400 else 'failed',
                     duration_ms=int((time.perf_counter() - t0) * 1000),
                     response_status=response.status_code,
                     response_body=response.json(),

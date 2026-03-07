@@ -12,6 +12,7 @@ class AppConfig(BaseModel):
     fallback_provider: str | None = None
     fallback_model: str | None = None
     proactive_enabled: bool = False
+    proactive_mode: str = 'balanced'
     proactive_cooldown_seconds: int = 300
     screenshot_enabled: bool = True
     screenshot_interval_seconds: int = 0
@@ -19,6 +20,10 @@ class AppConfig(BaseModel):
     screenshot_blocked_scene_types: list[str] = Field(default_factory=lambda: ['auth', 'payment', 'credential'])
     persona_intensity: str = 'normal'
     memory_enabled: bool = True
+    permission_safe_read_policy: str = 'allow'
+    permission_external_read_policy: str = 'ask'
+    permission_sensitive_read_policy: str = 'ask'
+    permission_action_policy: str = 'deny'
     # Scaffold default: local inference is configured but intentionally disabled
     # until a real provider path is verified.
     provider_stub_mode: bool = True

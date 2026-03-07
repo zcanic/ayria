@@ -23,7 +23,7 @@ export function App() {
   return `
     <main data-app="ayria">
       <header>
-        <h1>ayria v1</h1>
+        <h1>ayria local desktop runtime</h1>
         ${PresenceBadge()}
         <div id="transport-status">Events: polling mode</div>
       </header>
@@ -33,6 +33,12 @@ export function App() {
       <aside>
         <h2>World State</h2>
         <pre id="world-state">Loading...</pre>
+        <h2>Recent Tasks</h2>
+        <div id="task-list">No tasks yet.</div>
+      </aside>
+      <aside>
+        <h2>Activity</h2>
+        <div id="audit-log">No audit records yet.</div>
       </aside>
       <footer>
         ${SettingsPage()}

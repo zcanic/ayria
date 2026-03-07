@@ -15,6 +15,9 @@ export function PresenceBadge() {
     <section data-region="presence-badge">
       <strong>Presence</strong>
       <div id="presence-status">Mode: idle</div>
+      <div id="presence-reason">Reason: startup</div>
+      <div id="presence-focus">Focus: unknown</div>
+      <div id="presence-cooldown">Cooldown: 0s</div>
       <div id="runtime-health">Runtime: unknown</div>
     </section>
   `;

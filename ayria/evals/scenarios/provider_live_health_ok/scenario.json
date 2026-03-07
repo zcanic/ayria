@@ -31,10 +31,22 @@
       "expected": "live"
     },
     {
+      "rule_id": "providers_ollama_id",
+      "type": "exact_match",
+      "target": "steps.get_providers.response_body.items[0].id",
+      "expected": "ollama"
+    },
+    {
       "rule_id": "providers_ollama_status",
       "type": "substring_match",
       "target": "steps.get_providers.response_body.items[0].status",
       "expected": "ok"
+    },
+    {
+      "rule_id": "health_ollama_id",
+      "type": "exact_match",
+      "target": "steps.get_provider_health.response_body.providers[0].id",
+      "expected": "ollama"
     },
     {
       "rule_id": "health_ollama_status",

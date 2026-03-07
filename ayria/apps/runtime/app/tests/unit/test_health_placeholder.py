@@ -2,7 +2,6 @@ from fastapi.testclient import TestClient
 import pytest
 import asyncio
 
-from app.domain.services.model_execution_service import ModelExecutionService
 from app.domain.services.presence_service import PresenceService
 from app.main import app
 from app.runtime_container import RuntimeContainer
@@ -13,6 +12,7 @@ def runtime_env(monkeypatch: pytest.MonkeyPatch) -> dict:
     test_container = RuntimeContainer()
 
     import app.api.routes.chat as chat_route
+    import app.api.routes.audit as audit_route
     import app.api.routes.config as config_route
     import app.api.routes.events as events_route
     import app.api.routes.health as health_route
@@ -20,6 +20,7 @@ def runtime_env(monkeypatch: pytest.MonkeyPatch) -> dict:
     import app.api.routes.tasks as tasks_route
     import app.api.routes.world_state as world_state_route
 
+    monkeypatch.setattr(audit_route, 'container', test_container)
     monkeypatch.setattr(chat_route, 'container', test_container)
     monkeypatch.setattr(config_route, 'container', test_container)
     monkeypatch.setattr(events_route, 'container', test_container)
@@ -34,6 +35,15 @@ def runtime_env(monkeypatch: pytest.MonkeyPatch) -> dict:
 @pytest.fixture
 def runtime_client(runtime_env: dict) -> TestClient:
     return runtime_env['client']
+
+
+def _apply_runtime_overrides(container: RuntimeContainer, *, config_updates: dict | None = None, provider_overrides: dict | None = None, removed_providers: list[str] | None = None) -> None:
+    if config_updates:
+        container.apply_config(container.config.model_copy(update=config_updates))
+    for provider_name in removed_providers or []:
+        container.remove_provider(provider_name)
+    for provider_name, provider in (provider_overrides or {}).items():
+        container.override_provider(provider_name, provider)
 
 
 def test_health_endpoint(runtime_client: TestClient) -> None:
@@ -68,10 +78,11 @@ def test_chat_send_live_mode_with_unreachable_provider_fails_truthfully(runtime_
 
     client = runtime_env['client']
     container = runtime_env['container']
-    container.config.provider_stub_mode = False
-    container.llm_providers['ollama'] = FakeUnreachableProvider()
-    container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
-    container.orchestrator._model_execution_service = container.model_execution_service
+    _apply_runtime_overrides(
+        container,
+        config_updates={'provider_stub_mode': False},
+        provider_overrides={'ollama': FakeUnreachableProvider()},
+    )
 
     response = client.post('/api/v1/chat/send', json={'text': 'hello', 'image_paths': []})
     assert response.status_code == 200
@@ -95,9 +106,11 @@ def test_chat_send_live_mode_with_missing_model_reports_install_guidance(runtime
 
     client = runtime_env['client']
     container = runtime_env['container']
-    container.llm_providers['ollama'] = FakeHealthOnlyProvider()
-    container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
-    container.orchestrator._model_execution_service = container.model_execution_service
+    _apply_runtime_overrides(
+        container,
+        config_updates={'provider_stub_mode': False},
+        provider_overrides={'ollama': FakeHealthOnlyProvider()},
+    )
 
     response = client.post('/api/v1/chat/send', json={'text': 'hello', 'image_paths': []})
     assert response.status_code == 200
@@ -154,9 +167,11 @@ def test_ollama_provider_disables_proxy_env_for_health_checks(monkeypatch: pytes
 def test_chat_send_provider_unavailable_fails_truthfully(runtime_env: dict) -> None:
     client = runtime_env['client']
     container = runtime_env['container']
-    container.llm_providers.pop('ollama', None)
-    container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
-    container.orchestrator._model_execution_service = container.model_execution_service
+    _apply_runtime_overrides(
+        container,
+        config_updates={'provider_stub_mode': False},
+        removed_providers=['ollama'],
+    )
 
     response = client.post('/api/v1/chat/send', json={'text': 'hello', 'image_paths': []})
     assert response.status_code == 200
@@ -180,9 +195,11 @@ def test_chat_send_provider_invalid_output_fails_truthfully(runtime_env: dict) -
 
     client = runtime_env['client']
     container = runtime_env['container']
-    container.llm_providers['ollama'] = FakeBrokenProvider()
-    container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
-    container.orchestrator._model_execution_service = container.model_execution_service
+    _apply_runtime_overrides(
+        container,
+        config_updates={'provider_stub_mode': False},
+        provider_overrides={'ollama': FakeBrokenProvider()},
+    )
 
     response = client.post('/api/v1/chat/send', json={'text': 'hello', 'image_paths': []})
     assert response.status_code == 200
@@ -207,9 +224,11 @@ def test_chat_send_live_mode_with_real_provider_path_is_completed(runtime_env: d
 
     client = runtime_env['client']
     container = runtime_env['container']
-    container.llm_providers['ollama'] = FakeWorkingProvider()
-    container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
-    container.orchestrator._model_execution_service = container.model_execution_service
+    _apply_runtime_overrides(
+        container,
+        config_updates={'provider_stub_mode': False},
+        provider_overrides={'ollama': FakeWorkingProvider()},
+    )
 
     response = client.post('/api/v1/chat/send', json={'text': 'hello', 'image_paths': []})
     assert response.status_code == 200
@@ -251,11 +270,11 @@ def test_chat_send_live_mode_with_images_passes_multimodal_payload(runtime_env: 
 
     client = runtime_env['client']
     container = runtime_env['container']
-    container.config.provider_stub_mode = False
-    container.config.vision_model = 'qwen3.5:0.8b'
-    container.llm_providers['ollama'] = FakeVisionProvider()
-    container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
-    container.orchestrator._model_execution_service = container.model_execution_service
+    _apply_runtime_overrides(
+        container,
+        config_updates={'provider_stub_mode': False, 'vision_model': 'qwen3.5:0.8b'},
+        provider_overrides={'ollama': FakeVisionProvider()},
+    )
 
     response = client.post('/api/v1/chat/send', json={'text': 'what is in this image?', 'image_paths': [str(image_path)]})
     assert response.status_code == 200
@@ -403,10 +422,11 @@ def test_providers_endpoint_reports_live_mode_with_reachable_provider(runtime_en
 
     client = runtime_env['client']
     container = runtime_env['container']
-    container.config.provider_stub_mode = False
-    container.llm_providers['ollama'] = FakeHealthyProvider()
-    container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
-    container.orchestrator._model_execution_service = container.model_execution_service
+    _apply_runtime_overrides(
+        container,
+        config_updates={'provider_stub_mode': False},
+        provider_overrides={'ollama': FakeHealthyProvider()},
+    )
 
     providers = client.get('/api/v1/providers').json()
     assert providers['runtime_mode'] == 'live'
@@ -445,7 +465,7 @@ def test_default_provider_config_changes_route_provider(runtime_env: dict) -> No
             'capability_model': 'cloud-model',
         }
     )
-    container.llm_providers['cloud'] = FakeCloudProvider()
+    container.override_provider('cloud', FakeCloudProvider())
     container.apply_config(next_config)
 
     response = client.post('/api/v1/chat/send', json={'text': 'hello', 'image_paths': []})

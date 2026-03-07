@@ -76,7 +76,15 @@ class Orchestrator:
         self._event_stream.publish('world_state.patched', world_state.model_dump())
 
     def handle_user_message(self, text: str, image_paths: list[str] | None = None) -> dict:
-        self._set_presence(mode='chatting', user_active=True)
+        current_world_state = self._world_state_repo.get()
+        self._world_state_repo.set_presence(
+            self._presence_service.presence_for_user_message(
+                active_window_title=current_world_state.active_window.window_title if current_world_state.active_window else None
+            )
+        )
+        updated_presence = self._world_state_repo.get()
+        self._event_stream.publish('presence.updated', updated_presence.presence.model_dump() if updated_presence.presence else {})
+        self._event_stream.publish('world_state.patched', updated_presence.model_dump())
 
         task = self._task_service.create_task(
             task_type='chat_reply',

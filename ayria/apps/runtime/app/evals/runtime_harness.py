@@ -18,6 +18,7 @@ from app.runtime_container import RuntimeContainer
 
 
 def _bind_container(container: RuntimeContainer) -> None:
+    import app.api.routes.audit as audit_route
     import app.api.routes.chat as chat_route
     import app.api.routes.config as config_route
     import app.api.routes.events as events_route
@@ -29,6 +30,7 @@ def _bind_container(container: RuntimeContainer) -> None:
     import app.api.routes.world_state as world_state_route
     import app.api.routes.ws as ws_route
 
+    audit_route.container = container
     chat_route.container = container
     config_route.container = container
     events_route.container = container

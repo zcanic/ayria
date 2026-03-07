@@ -27,12 +27,17 @@ class UpdateConfigRequest(BaseModel):
     fallback_provider: str | None = None
     fallback_model: str | None = None
     proactive_enabled: bool | None = None
+    proactive_mode: str | None = None
     proactive_cooldown_seconds: int | None = None
     screenshot_enabled: bool | None = None
     blacklisted_apps: list[str] | None = None
     screenshot_blocked_scene_types: list[str] | None = None
     provider_stub_mode: bool | None = None
     persona_intensity: str | None = None
+    permission_safe_read_policy: str | None = None
+    permission_external_read_policy: str | None = None
+    permission_sensitive_read_policy: str | None = None
+    permission_action_policy: str | None = None
 
 
 @router.put('')
@@ -56,5 +61,12 @@ def update_config(request: UpdateConfigRequest) -> dict:
             'diff': diff,
             'config': updated,
         },
+    )
+    container.audit_repo.append(
+        category='config',
+        action='config.updated',
+        decision='applied',
+        summary=f'Updated {len(diff)} config field(s)',
+        metadata={'diff': diff},
     )
     return {'updated': True, 'config': updated, 'diff': diff}

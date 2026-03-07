@@ -4,7 +4,7 @@ These are intentionally small and explicit so scenario meaning stays in data
 files rather than being buried in procedural code.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class EvalStep(BaseModel):
@@ -18,11 +18,14 @@ class EvalStep(BaseModel):
 
 
 class ScoreRule(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     rule_id: str
     type: str
     target: str
     expected: object | None = None
     max_ms: int | None = None
+    schema_definition: dict | None = Field(default=None, alias='schema')
 
 
 class EvalScenario(BaseModel):

@@ -22,12 +22,13 @@
 export function ChatPanel() {
   return `
     <section data-region="chat-panel">
-      <h2>Chat</h2>
+      <h2>Conversation</h2>
       <div id="chat-messages" data-region="messages">No messages yet.</div>
       <div data-region="composer">
         <textarea id="chat-input" rows="4" placeholder="Talk to ayria..."></textarea>
         <button id="chat-send-button" type="button">Send</button>
       </div>
+      <div id="chat-status">Runtime idle.</div>
     </section>
   `;
 }

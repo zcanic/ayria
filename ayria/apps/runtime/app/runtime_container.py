@@ -3,13 +3,16 @@ from app.domain.services.context_service import ContextService
 from app.domain.services.model_execution_service import ModelExecutionService
 from app.domain.services.orchestrator import Orchestrator
 from app.domain.services.persona_service import PersonaService
+from app.domain.services.permission_policy_service import PermissionPolicyService
 from app.domain.services.presence_service import PresenceService
+from app.domain.services.proactive_service import ProactiveService
 from app.domain.services.routing_service import RoutingService
 from app.domain.services.task_service import TaskService
 from app.domain.services.tool_service import ToolService
 from app.infra.repositories.message_repo import MessageRepository
 from app.infra.repositories.task_repo import TaskRepository
 from app.infra.repositories.world_state_repo import WorldStateRepository
+from app.infra.repositories.audit_repo import AuditRepository
 from app.providers.vision.screenshot_analyzer import ScreenshotAnalyzer
 from app.providers.llm.cloud_provider import CloudProvider
 from app.providers.llm.mlx_provider import MLXProvider
@@ -27,6 +30,7 @@ class RuntimeContainer:
         self.world_state_repo = WorldStateRepository()
         self.task_repo = TaskRepository()
         self.message_repo = MessageRepository()
+        self.audit_repo = AuditRepository()
         self.event_stream = EventStream()
         self.llm_providers = {
             'ollama': OllamaProvider(),
@@ -47,6 +51,8 @@ class RuntimeContainer:
             complex_model=self.config.fallback_model or 'qwen3.5:9b',
         )
         self.persona_service = PersonaService()
+        self.permission_policy_service = PermissionPolicyService(self.config)
+        self.proactive_service = ProactiveService(proactive_mode=self.config.proactive_mode)
         self.tool_service = ToolService(self.tool_registry, world_state_repo=self.world_state_repo)
         self.model_execution_service = ModelExecutionService(
             provider_stub_mode=self.config.provider_stub_mode,
@@ -71,6 +77,17 @@ class RuntimeContainer:
             persona_intensity=self.config.persona_intensity,
         )
 
+    def rebuild_runtime_graph(self) -> None:
+        self.apply_config(self.config.model_copy(deep=True))
+
+    def override_provider(self, provider_name: str, provider: object) -> None:
+        self.llm_providers[provider_name] = provider
+        self.rebuild_runtime_graph()
+
+    def remove_provider(self, provider_name: str) -> None:
+        self.llm_providers.pop(provider_name, None)
+        self.rebuild_runtime_graph()
+
     def apply_config(self, next_config: AppConfig) -> None:
         with self._graph_lock:
             last_proactive_ts = self.presence_service.last_proactive_ts
@@ -93,6 +110,8 @@ class RuntimeContainer:
                 provider_stub_mode=next_config.provider_stub_mode,
                 providers=self.llm_providers,
             )
+            next_permission_policy_service = PermissionPolicyService(next_config)
+            next_proactive_service = ProactiveService(proactive_mode=next_config.proactive_mode)
             next_screenshot_analyzer = ScreenshotAnalyzer(
                 model_execution_service=next_model_execution_service,
                 provider_name=next_config.screenshot_analysis_provider,
@@ -115,6 +134,8 @@ class RuntimeContainer:
             self.routing_service = next_routing_service
             self.presence_service = next_presence_service
             self.model_execution_service = next_model_execution_service
+            self.permission_policy_service = next_permission_policy_service
+            self.proactive_service = next_proactive_service
             self.screenshot_analyzer = next_screenshot_analyzer
             self.orchestrator = next_orchestrator
 

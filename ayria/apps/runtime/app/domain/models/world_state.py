@@ -37,6 +37,9 @@ class PresenceState(BaseModel):
     user_active: bool
     last_user_input_at: str
     proactive_allowed: bool
+    reason: str | None = None
+    focus_label: str | None = None
+    cooldown_remaining_seconds: int = 0
 
 
 class WorldState(BaseModel):

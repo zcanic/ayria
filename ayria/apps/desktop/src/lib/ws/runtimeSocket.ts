@@ -17,10 +17,13 @@ export type RuntimeEvent =
   | { id: string; seq: number; source: string; timestamp: string; type: 'connection.ready'; payload: { status: string } }
   | { id: string; seq: number; source: string; timestamp: string; type: 'events.dropped'; payload: Record<string, unknown> }
   | { id: string; seq: number; source: string; timestamp: string; type: 'config.updated'; payload: Record<string, unknown> }
+  | { id: string; seq: number; source: string; timestamp: string; type: 'permission.requested'; payload: Record<string, unknown> }
+  | { id: string; seq: number; source: string; timestamp: string; type: 'assistant.proactive.suggested'; payload: Record<string, unknown> }
   | { id: string; seq: number; source: string; timestamp: string; type: 'presence.updated'; payload: Record<string, unknown> }
   | { id: string; seq: number; source: string; timestamp: string; type: 'world_state.patched'; payload: Record<string, unknown> }
   | { id: string; seq: number; source: string; timestamp: string; type: 'assistant.message.created'; payload: Record<string, unknown> }
   | { id: string; seq: number; source: string; timestamp: string; type: 'task.updated'; payload: Record<string, unknown> }
+  | { id: string; seq: number; source: string; timestamp: string; type: 'tool.called'; payload: Record<string, unknown> }
   | { id: string; seq: number; source: string; timestamp: string; type: 'tool.result'; payload: Record<string, unknown> }
   | { id: string; seq: number; source: string; timestamp: string; type: 'tool.failed'; payload: Record<string, unknown> };
 

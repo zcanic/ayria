@@ -38,6 +38,7 @@ from app.api.routes.providers import router as providers_router
 from app.api.routes.world_state import router as world_state_router
 from app.api.routes.tools import router as tools_router
 from app.api.routes.ws import router as ws_router
+from app.api.routes.audit import router as audit_router
 
 app = FastAPI(title="ayria-runtime", version="0.1.0")
 app.include_router(health_router, prefix="/api/v1")
@@ -50,3 +51,4 @@ app.include_router(providers_router, prefix="/api/v1")
 app.include_router(world_state_router, prefix="/api/v1")
 app.include_router(tools_router, prefix="/api/v1")
 app.include_router(ws_router, prefix="/api/v1")
+app.include_router(audit_router, prefix="/api/v1")

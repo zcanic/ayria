@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from jsonschema import Draft202012Validator, ValidationError
 
 from app.evals.models import ScoreResult, ScoreRule, StepResult
 
@@ -55,11 +56,20 @@ def score_rule(rule: ScoreRule, steps: dict[str, StepResult]) -> ScoreResult:
         return ScoreResult(rule_id=rule.rule_id, passed=passed, actual=actual, expected=rule.expected)
 
     if rule.type == 'schema_match':
-        # v0 keeps schema_match intentionally simple: exact expected value at a
-        # known response location. Broader JSON Schema validation can be added
-        # later without changing scenario structure.
-        passed = actual == rule.expected
-        return ScoreResult(rule_id=rule.rule_id, passed=passed, actual=actual, expected=rule.expected)
+        if not isinstance(rule.schema_definition, dict):
+            raise ValueError(f'schema_match_requires_schema:{rule.rule_id}')
+        validator = Draft202012Validator(rule.schema_definition)
+        try:
+            validator.validate(actual)
+            return ScoreResult(rule_id=rule.rule_id, passed=True, actual=actual, expected=rule.schema_definition)
+        except ValidationError as error:
+            return ScoreResult(
+                rule_id=rule.rule_id,
+                passed=False,
+                actual=actual,
+                expected=rule.schema_definition,
+                details=error.message,
+            )
 
     if rule.type == 'latency_budget':
         actual_ms = int(actual)
