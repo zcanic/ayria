@@ -42,7 +42,9 @@ Original PM-level design document:
 7. [mcp-strategy.md](/Volumes/zcan mac/nyatter/ayria/docs/architecture/mcp-strategy.md)
 8. [skill-system.md](/Volumes/zcan mac/nyatter/ayria/docs/architecture/skill-system.md)
 9. [structure-enforced-architecture.md](/Volumes/zcan mac/nyatter/ayria/docs/architecture/structure-enforced-architecture.md)
-10. Then inspect scaffold files under `ayria/apps/runtime` and `ayria/apps/desktop`
+10. [evals/README.md](/Volumes/zcan mac/nyatter/ayria/evals/README.md)
+11. [TEST_APP_SPEC.md](/Volumes/zcan mac/nyatter/ayria/evals/TEST_APP_SPEC.md)
+12. Then inspect scaffold files under `ayria/apps/runtime` and `ayria/apps/desktop`
 
 ## 4. Non-Negotiable Architectural Rules
 
@@ -211,6 +213,7 @@ Already produced in this repository:
 - scaffolded monorepo under `ayria/`
 - detailed comments in key scaffold files
 - architecture docs for event protocol, API contracts, prompt policy, privacy, runtime policy, tool strategy, MCP strategy, skill strategy, and handoff guidance
+- a standardized eval/test-app spec and scenario skeletons under `ayria/evals`
 - runtime now includes `ModelExecutionService` with explicit stub/live mode semantics
 - runtime now includes a real Ollama adapter path for local inference work
 - in scaffold defaults, provider execution is intentionally non-live and reported as such

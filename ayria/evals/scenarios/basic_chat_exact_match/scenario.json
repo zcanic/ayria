@@ -1,0 +1,52 @@
+{
+  "scenario_id": "basic_chat_exact_match",
+  "scenario_version": "v1",
+  "purpose": "Verify that live local chat can produce a strict exact-match response without persona drift.",
+  "runtime_mode": "live",
+  "provider": "ollama",
+  "model": "qwen3.5:0.8b",
+  "config_overrides": {
+    "provider_stub_mode": false
+  },
+  "fixture_refs": [
+    "fixtures/world_state/minimal-cursor.json"
+  ],
+  "steps": [
+    {
+      "step_id": "send_chat",
+      "kind": "http_request",
+      "method": "POST",
+      "path": "/api/v1/chat/send",
+      "payload": {
+        "text": "Reply with exactly: runtime-smoke-ok",
+        "image_paths": []
+      }
+    }
+  ],
+  "scoring": [
+    {
+      "rule_id": "response_status",
+      "type": "schema_match",
+      "target": "steps.send_chat.response_body.status",
+      "expected": "completed"
+    },
+    {
+      "rule_id": "provider_model",
+      "type": "exact_match",
+      "target": "steps.send_chat.response_body.route.model",
+      "expected": "qwen3.5:0.8b"
+    },
+    {
+      "rule_id": "assistant_text_exact",
+      "type": "exact_match",
+      "target": "steps.send_chat.response_body.assistant_message.parts[0].text",
+      "expected": "runtime-smoke-ok"
+    },
+    {
+      "rule_id": "latency_budget",
+      "type": "latency_budget",
+      "target": "steps.send_chat.duration_ms",
+      "max_ms": 120000
+    }
+  ]
+}

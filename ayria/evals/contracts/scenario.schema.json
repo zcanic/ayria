@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ayria eval scenario",
+  "type": "object",
+  "required": [
+    "scenario_id",
+    "scenario_version",
+    "purpose",
+    "runtime_mode",
+    "provider",
+    "model",
+    "config_overrides",
+    "steps",
+    "scoring"
+  ],
+  "properties": {
+    "scenario_id": {
+      "type": "string"
+    },
+    "scenario_version": {
+      "type": "string"
+    },
+    "purpose": {
+      "type": "string"
+    },
+    "runtime_mode": {
+      "type": "string",
+      "enum": ["stub", "live"]
+    },
+    "provider": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "config_overrides": {
+      "type": "object"
+    },
+    "fixture_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "scoring": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/score_rule"
+      }
+    }
+  },
+  "$defs": {
+    "step": {
+      "type": "object",
+      "required": ["step_id", "kind"],
+      "properties": {
+        "step_id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["http_request", "world_state_seed", "delay"]
+        },
+        "method": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "payload": {
+          "type": "object"
+        },
+        "fixture_ref": {
+          "type": "string"
+        },
+        "delay_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "score_rule": {
+      "type": "object",
+      "required": ["rule_id", "type", "target"],
+      "properties": {
+        "rule_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "exact_match",
+            "substring_match",
+            "schema_match",
+            "policy_assertion",
+            "latency_budget"
+          ]
+        },
+        "target": {
+          "type": "string"
+        },
+        "expected": {},
+        "max_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

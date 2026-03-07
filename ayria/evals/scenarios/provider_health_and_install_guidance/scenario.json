@@ -1,0 +1,48 @@
+{
+  "scenario_id": "provider_health_and_install_guidance",
+  "scenario_version": "v1",
+  "purpose": "Verify that provider inventory is truthful and missing-model states produce actionable install guidance.",
+  "runtime_mode": "live",
+  "provider": "ollama",
+  "model": "qwen3.5:0.8b",
+  "config_overrides": {
+    "provider_stub_mode": false
+  },
+  "fixture_refs": [],
+  "steps": [
+    {
+      "step_id": "get_providers",
+      "kind": "http_request",
+      "method": "GET",
+      "path": "/api/v1/providers",
+      "payload": {}
+    },
+    {
+      "step_id": "get_provider_health",
+      "kind": "http_request",
+      "method": "GET",
+      "path": "/api/v1/health/providers",
+      "payload": {}
+    }
+  ],
+  "scoring": [
+    {
+      "rule_id": "providers_live_mode",
+      "type": "exact_match",
+      "target": "steps.get_providers.response_body.runtime_mode",
+      "expected": "live"
+    },
+    {
+      "rule_id": "providers_ollama_status",
+      "type": "substring_match",
+      "target": "steps.get_providers.response_body.items[0].status",
+      "expected": "ok"
+    },
+    {
+      "rule_id": "health_ollama_status",
+      "type": "substring_match",
+      "target": "steps.get_provider_health.response_body.providers[0].status",
+      "expected": "ok"
+    }
+  ]
+}

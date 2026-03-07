@@ -81,3 +81,8 @@ Start with:
 - `docs/architecture/skill-system.md`
 - `docs/architecture/structure-enforced-architecture.md`
 - `docs/architecture/runtime-policy.md`
+
+For reproducible evaluation work, also read:
+
+- `evals/README.md`
+- `evals/TEST_APP_SPEC.md`

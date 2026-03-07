@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ayria eval run result",
+  "type": "object",
+  "required": [
+    "run_id",
+    "scenario_id",
+    "scenario_version",
+    "git_commit",
+    "runtime_mode",
+    "provider",
+    "model",
+    "started_at",
+    "finished_at",
+    "duration_ms",
+    "passed",
+    "scores",
+    "steps"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string"
+    },
+    "scenario_id": {
+      "type": "string"
+    },
+    "scenario_version": {
+      "type": "string"
+    },
+    "git_commit": {
+      "type": "string"
+    },
+    "runtime_mode": {
+      "type": "string"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "finished_at": {
+      "type": "string"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "passed": {
+      "type": "boolean"
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scores": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/score_result"
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/step_result"
+      }
+    }
+  },
+  "$defs": {
+    "score_result": {
+      "type": "object",
+      "required": ["rule_id", "passed"],
+      "properties": {
+        "rule_id": {
+          "type": "string"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "actual": {},
+        "expected": {},
+        "details": {
+          "type": "string"
+        }
+      }
+    },
+    "step_result": {
+      "type": "object",
+      "required": ["step_id", "status", "duration_ms"],
+      "properties": {
+        "step_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["completed", "failed", "skipped"]
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "response_status": {
+          "type": "integer"
+        },
+        "response_body": {}
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "active_window": {
+    "app_name": "Cursor",
+    "window_title": "main.py",
+    "url": null
+  },
+  "presence": {
+    "mode": "idle",
+    "user_is_actively_typing": false,
+    "last_user_interaction_at": null,
+    "last_proactive_at": null
+  }
+}
