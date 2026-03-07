@@ -36,5 +36,5 @@ class RoutingService:
             use_tools=False,
             use_persona_rewrite=True,
             timeout_seconds=30,
-            reason='local-first chat route (tool path disabled in v1 scaffold)',
+            reason='local-first chat route with optional multimodal vision input',
         )

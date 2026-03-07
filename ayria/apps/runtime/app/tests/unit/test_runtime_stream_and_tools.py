@@ -5,6 +5,8 @@ from fastapi.testclient import TestClient
 import pytest
 
 from app.main import app
+from app.domain.services.model_execution_service import ModelExecutionService
+from app.providers.vision.screenshot_analyzer import ScreenshotAnalyzer
 from app.runtime_container import RuntimeContainer
 
 
@@ -78,3 +80,48 @@ def test_screenshot_analyzer_returns_structured_non_stub_data(runtime_env: dict)
     assert result['scene_type'] == 'code'
     assert result['confidence'] > 0.5
     assert 'stub screenshot summary' not in result['summary']
+
+
+def test_screenshot_analyzer_uses_model_backed_path_when_available(runtime_env: dict, tmp_path: Path) -> None:
+    class FakeVisionProvider:
+        implemented = True
+        provider_id = 'ollama'
+        supports_images = True
+
+        def normalize_model_name(self, model: str) -> str:
+            return model
+
+        async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+            assert len(messages[0].get('images') or []) == 1
+            return {
+                'provider': 'ollama',
+                'model': model,
+                'message': 'A browser window showing Ayria documentation and a left navigation sidebar.',
+            }
+
+        async def health_check(self, model: str | None = None) -> dict:
+            return {
+                'configured': True,
+                'implemented': True,
+                'reachable': True,
+                'status': 'ok',
+                'supports_images': True,
+            }
+
+    image_path = tmp_path / 'browser-shot.png'
+    image_path.write_bytes(b'\x89PNG\r\n\x1a\nfakepngdata')
+
+    container = runtime_env['container']
+    container.config.provider_stub_mode = False
+    container.llm_providers['ollama'] = FakeVisionProvider()
+    container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
+    analyzer = ScreenshotAnalyzer(
+        model_execution_service=container.model_execution_service,
+        provider_name='ollama',
+        model='qwen3.5:0.8b',
+    )
+
+    result = asyncio.run(analyzer.analyze(str(image_path)))
+    assert result['analysis_mode'] == 'provider_vision'
+    assert result['scene_type'] == 'browser'
+    assert result['provider'] == 'ollama'

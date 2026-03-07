@@ -4,6 +4,10 @@ from pydantic import BaseModel, Field
 class AppConfig(BaseModel):
     default_provider: str = 'ollama'
     capability_model: str = 'qwen3.5:0.8b'
+    vision_provider: str = 'ollama'
+    vision_model: str = 'qwen3.5:0.8b'
+    screenshot_analysis_provider: str = 'ollama'
+    screenshot_analysis_model: str = 'qwen3.5:0.8b'
     persona_model: str | None = None
     fallback_provider: str | None = None
     fallback_model: str | None = None

@@ -220,6 +220,51 @@ def test_chat_send_live_mode_with_real_provider_path_is_completed(runtime_env: d
     assert body['assistant_message']['parts'][0]['text'] == 'real reply'
 
 
+def test_chat_send_live_mode_with_images_passes_multimodal_payload(runtime_env: dict, tmp_path) -> None:
+    class FakeVisionProvider:
+        implemented = True
+        provider_id = 'ollama'
+        supports_images = True
+
+        def normalize_model_name(self, model: str) -> str:
+            return model
+
+        async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+            first = messages[0]
+            assert first['role'] == 'user'
+            assert isinstance(first.get('images'), list)
+            assert len(first['images']) == 1
+            assert isinstance(first['images'][0], str)
+            return {'provider': 'ollama', 'model': model, 'message': 'saw-image'}
+
+        async def health_check(self, model: str | None = None) -> dict:
+            return {
+                'configured': True,
+                'implemented': True,
+                'reachable': True,
+                'status': 'ok',
+                'supports_images': True,
+            }
+
+    image_path = tmp_path / 'sample.png'
+    image_path.write_bytes(b'\x89PNG\r\n\x1a\nfakepngdata')
+
+    client = runtime_env['client']
+    container = runtime_env['container']
+    container.config.provider_stub_mode = False
+    container.config.vision_model = 'qwen3.5:0.8b'
+    container.llm_providers['ollama'] = FakeVisionProvider()
+    container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
+    container.orchestrator._model_execution_service = container.model_execution_service
+
+    response = client.post('/api/v1/chat/send', json={'text': 'what is in this image?', 'image_paths': [str(image_path)]})
+    assert response.status_code == 200
+    body = response.json()
+    assert body['status'] == 'completed'
+    assert body['assistant_message']['parts'][0]['text'] == 'saw-image'
+    assert body['route']['model'] == 'qwen3.5:0.8b'
+
+
 def test_window_changed_updates_world_state(runtime_client: TestClient) -> None:
     response = runtime_client.post(
         '/api/v1/events/window-changed',
@@ -244,6 +289,13 @@ def test_screenshot_ingestion_allowed_path(runtime_client: TestClient) -> None:
     assert body['analyzed'] is True
     assert body['stored'] is True
     assert body['world_state']['presence']['mode'] == 'observing'
+
+
+def test_provider_inventory_reports_image_support(runtime_env: dict) -> None:
+    client = runtime_env['client']
+    providers = client.get('/api/v1/providers').json()
+    ollama = next(item for item in providers['items'] if item['id'] == 'ollama')
+    assert ollama['supports_images'] is True
 
 
 def test_screenshot_ingestion_blocked_path(runtime_client: TestClient) -> None:

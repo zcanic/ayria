@@ -7,6 +7,7 @@ The runtime must be able to explain why a request left the local machine.
 class CloudProvider:
     provider_id = 'cloud'
     implemented = False
+    supports_images = False
 
     async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
         raise RuntimeError('provider_not_implemented:cloud')

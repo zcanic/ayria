@@ -101,8 +101,10 @@ def test_provider_health_scenario_runs_with_fake_provider(monkeypatch) -> None:
 def test_scenario_catalog_lists_new_standard_scenarios() -> None:
     names = {path.parent.name for path in list_scenario_paths()}
     assert 'basic_chat_exact_match' in names
+    assert 'multimodal_chat_image_input' in names
     assert 'provider_live_health_ok' in names
     assert 'provider_missing_model_install_guidance' in names
+    assert 'screenshot_model_backed_analysis' in names
     assert 'screenshot_blocked_blacklisted_app' in names
     assert 'stub_mode_truthful_chat' in names
 
@@ -122,6 +124,22 @@ def test_screenshot_blocked_blacklisted_app_scenario_runs() -> None:
     assert result.passed is True
     blocked_score = next(item for item in result.scores if item.rule_id == 'policy_blocked')
     assert blocked_score.actual is True
+
+
+def test_multimodal_chat_image_input_scenario_runs() -> None:
+    scenario_path = Path(__file__).resolve().parents[5] / 'evals/scenarios/multimodal_chat_image_input/scenario.json'
+    result, _ = run_scenario(scenario_path, write_artifacts=False)
+    assert result.passed is True
+    reply_score = next(item for item in result.scores if item.rule_id == 'multimodal_reply_exact')
+    assert reply_score.actual == 'multimodal-ok:1'
+
+
+def test_screenshot_model_backed_analysis_scenario_runs() -> None:
+    scenario_path = Path(__file__).resolve().parents[5] / 'evals/scenarios/screenshot_model_backed_analysis/scenario.json'
+    result, _ = run_scenario(scenario_path, write_artifacts=False)
+    assert result.passed is True
+    mode_score = next(item for item in result.scores if item.rule_id == 'analysis_mode_provider')
+    assert mode_score.actual == 'provider_vision'
 
 
 def test_provider_missing_model_install_guidance_scenario_runs() -> None:

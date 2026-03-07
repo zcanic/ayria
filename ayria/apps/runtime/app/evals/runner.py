@@ -67,6 +67,20 @@ def _effective_config_overrides(scenario) -> dict:
     return overrides
 
 
+def _resolve_step_payload(payload: dict) -> dict:
+    resolved = dict(payload)
+    image_paths = resolved.get('image_paths')
+    if isinstance(image_paths, list):
+        resolved['image_paths'] = [
+            str((repo_root() / path).resolve()) if isinstance(path, str) and not Path(path).is_absolute() else path
+            for path in image_paths
+        ]
+    image_path = resolved.get('image_path')
+    if isinstance(image_path, str) and not Path(image_path).is_absolute():
+        resolved['image_path'] = str((repo_root() / image_path).resolve())
+    return resolved
+
+
 def run_scenario(scenario_path: str | Path, *, write_artifacts: bool = True) -> tuple[EvalRunResult, Path]:
     scenario = load_scenario(scenario_path)
     config_overrides = _effective_config_overrides(scenario)
@@ -101,7 +115,7 @@ def run_scenario(scenario_path: str | Path, *, write_artifacts: bool = True) -> 
                 raise ValueError(f'unsupported step kind: {step.kind}')
 
             method = str(step.method or 'GET').upper()
-            payload = step.payload or {}
+            payload = _resolve_step_payload(step.payload or {})
             if method == 'GET':
                 response = client.get(str(step.path))
             elif method == 'POST':

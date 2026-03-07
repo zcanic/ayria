@@ -25,7 +25,9 @@ def _bind_container(container: RuntimeContainer) -> None:
     import app.api.routes.memory as memory_route
     import app.api.routes.providers as providers_route
     import app.api.routes.tasks as tasks_route
+    import app.api.routes.tools as tools_route
     import app.api.routes.world_state as world_state_route
+    import app.api.routes.ws as ws_route
 
     chat_route.container = container
     config_route.container = container
@@ -34,7 +36,9 @@ def _bind_container(container: RuntimeContainer) -> None:
     memory_route.container = container
     providers_route.container = container
     tasks_route.container = container
+    tools_route.container = container
     world_state_route.container = container
+    ws_route.container = container
 
 
 @contextmanager

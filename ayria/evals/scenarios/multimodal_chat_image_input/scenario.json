@@ -1,0 +1,39 @@
+{
+  "scenario_id": "multimodal_chat_image_input",
+  "scenario_version": "v1",
+  "purpose": "Verify that /chat/send forwards image_paths into the multimodal provider path and returns a completed reply.",
+  "runtime_mode": "live",
+  "provider": "ollama",
+  "model": "qwen3.5:0.8b",
+  "mock_profile": "multimodal_ollama",
+  "config_overrides": {
+    "vision_model": "qwen3.5:0.8b"
+  },
+  "fixture_refs": [],
+  "steps": [
+    {
+      "step_id": "send_multimodal_chat",
+      "kind": "http_request",
+      "method": "POST",
+      "path": "/api/v1/chat/send",
+      "payload": {
+        "text": "What is in this image?",
+        "image_paths": ["evals/fixtures/images/solid_blue.png"]
+      }
+    }
+  ],
+  "scoring": [
+    {
+      "rule_id": "chat_status_completed",
+      "type": "exact_match",
+      "target": "steps.send_multimodal_chat.response_body.status",
+      "expected": "completed"
+    },
+    {
+      "rule_id": "multimodal_reply_exact",
+      "type": "exact_match",
+      "target": "steps.send_multimodal_chat.response_body.assistant_message.parts[0].text",
+      "expected": "multimodal-ok:1"
+    }
+  ]
+}

@@ -11,6 +11,7 @@ from typing import Protocol
 class LLMProvider(Protocol):
     provider_id: str
     implemented: bool
+    supports_images: bool
 
     def normalize_model_name(self, model: str) -> str:
         ...

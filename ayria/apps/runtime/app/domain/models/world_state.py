@@ -27,6 +27,9 @@ class ScreenshotSummary(BaseModel):
     detected_entities: list[str] = Field(default_factory=list)
     scene_type: Literal['code', 'browser', 'document', 'chat', 'image', 'desktop', 'unknown'] = 'unknown'
     confidence: float = 0.0
+    analysis_mode: str | None = None
+    analysis_provider: str | None = None
+    analysis_model: str | None = None
 
 
 class PresenceState(BaseModel):

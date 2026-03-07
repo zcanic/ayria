@@ -113,14 +113,18 @@ comparison.
 The first scenarios in this repo are intentionally narrow:
 
 1. `basic_chat_exact_match`
-2. `provider_live_health_ok`
-3. `provider_missing_model_install_guidance`
-4. `screenshot_blocked_blacklisted_app`
-5. `stub_mode_truthful_chat`
+2. `multimodal_chat_image_input`
+3. `provider_live_health_ok`
+4. `provider_missing_model_install_guidance`
+5. `screenshot_blocked_blacklisted_app`
+6. `screenshot_model_backed_analysis`
+7. `stub_mode_truthful_chat`
 
 These are valuable because they test the things most likely to silently rot:
 
 - live local provider truthfulness
+- multimodal image ingestion through the runtime path
+- model-backed screenshot analysis
 - correct model naming
 - install guidance for missing models
 - exact-output compliance
@@ -140,6 +144,10 @@ Current runner entrypoint:
 
 - `uv run python -m app.evals.runner --list`
 - `uv run python -m app.evals.runner --scenario ../../evals/scenarios/basic_chat_exact_match/scenario.json`
+
+Non-baseline live smoke entrypoint:
+
+- `uv run python -m app.evals.live_multimodal_smoke --image /absolute/path/to/image.png`
 
 Current output:
 

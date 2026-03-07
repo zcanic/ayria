@@ -15,6 +15,7 @@ router = APIRouter(prefix='/providers', tags=['providers'])
 def _provider_row(provider_id: str, default_model: str | None, configured: bool) -> dict:
     provider = container.llm_providers.get(provider_id)
     implemented = bool(getattr(provider, 'implemented', False)) if provider is not None else False
+    supports_images = bool(getattr(provider, 'supports_images', False)) if provider is not None else False
     runtime_mode = 'stub' if container.config.provider_stub_mode else 'live'
     if runtime_mode == 'stub':
         health = {
@@ -34,6 +35,7 @@ def _provider_row(provider_id: str, default_model: str | None, configured: bool)
         'default_model': default_model,
         'configured': health.get('configured', configured),
         'implemented': health.get('implemented', implemented),
+        'supports_images': supports_images,
         'reachable': health.get('reachable', False),
         'active_in_runtime_mode': active_in_runtime_mode,
         'runtime_mode': runtime_mode,

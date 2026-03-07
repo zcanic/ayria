@@ -84,6 +84,9 @@ def screenshot_captured(request: ScreenshotCapturedRequest) -> dict:
         detected_entities=analysis['detected_entities'],
         scene_type=analysis['scene_type'],
         confidence=float(analysis['confidence']),
+        analysis_mode=str(analysis.get('analysis_mode')) if analysis.get('analysis_mode') is not None else None,
+        analysis_provider=str(analysis.get('provider')) if analysis.get('provider') is not None else None,
+        analysis_model=str(analysis.get('model')) if analysis.get('model') is not None else None,
     )
     updated = container.world_state_repo.add_screenshot_summary(summary)
     container.event_stream.publish('world_state.patched', updated.model_dump())

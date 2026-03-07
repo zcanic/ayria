@@ -7,6 +7,7 @@ so the runtime can treat it similarly to other providers.
 class MLXProvider:
     provider_id = 'mlx'
     implemented = False
+    supports_images = False
 
     async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
         raise RuntimeError('provider_not_implemented:mlx')

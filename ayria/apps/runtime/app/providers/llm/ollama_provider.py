@@ -1,7 +1,8 @@
-"""Ollama adapter placeholder.
+"""Ollama adapter.
 
-Implement against Ollama's OpenAI-compatible or native API, but normalize the
-result into the runtime's provider abstraction.
+The runtime uses Ollama's native `/api/chat` route so text-only and multimodal
+requests can share the same provider abstraction. Image inputs are passed
+through `messages[].images` as base64-encoded PNG/JPEG content.
 """
 
 import httpx
@@ -10,6 +11,7 @@ import httpx
 class OllamaProvider:
     provider_id = 'ollama'
     implemented = True
+    supports_images = True
 
     _MODEL_ALIASES = {
         'Qwen3.5-0.8B': 'qwen3.5:0.8b',

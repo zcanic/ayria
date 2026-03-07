@@ -1,0 +1,56 @@
+{
+  "scenario_id": "screenshot_model_backed_analysis",
+  "scenario_version": "v1",
+  "purpose": "Verify that screenshot ingestion uses model-backed vision analysis when live multimodal inference is available.",
+  "runtime_mode": "live",
+  "provider": "ollama",
+  "model": "qwen3.5:0.8b",
+  "mock_profile": "multimodal_ollama",
+  "config_overrides": {
+    "screenshot_analysis_model": "qwen3.5:0.8b"
+  },
+  "fixture_refs": [],
+  "steps": [
+    {
+      "step_id": "focus_browser_window",
+      "kind": "http_request",
+      "method": "POST",
+      "path": "/api/v1/events/window-changed",
+      "payload": {
+        "app_name": "Safari",
+        "window_title": "Ayria Docs",
+        "url": "https://example.com/ayria-docs"
+      }
+    },
+    {
+      "step_id": "capture_screenshot",
+      "kind": "http_request",
+      "method": "POST",
+      "path": "/api/v1/events/screenshot-captured",
+      "payload": {
+        "image_path": "evals/fixtures/images/solid_blue.png",
+        "captured_at": "2026-03-07T00:00:00Z"
+      }
+    }
+  ],
+  "scoring": [
+    {
+      "rule_id": "analysis_mode_provider",
+      "type": "exact_match",
+      "target": "steps.capture_screenshot.response_body.screenshot_summary.analysis_mode",
+      "expected": "provider_vision"
+    },
+    {
+      "rule_id": "scene_type_browser",
+      "type": "exact_match",
+      "target": "steps.capture_screenshot.response_body.screenshot_summary.scene_type",
+      "expected": "browser"
+    },
+    {
+      "rule_id": "stored_true",
+      "type": "exact_match",
+      "target": "steps.capture_screenshot.response_body.stored",
+      "expected": true
+    }
+  ]
+}

@@ -29,6 +29,7 @@ def get_provider_health() -> dict:
     def provider_status(provider_id: str, model: str | None, configured: bool) -> dict:
         provider = container.llm_providers.get(provider_id)
         implemented = bool(getattr(provider, 'implemented', False)) if provider is not None else False
+        supports_images = bool(getattr(provider, 'supports_images', False)) if provider is not None else False
         if runtime_mode == 'stub':
             health = {
                 'configured': configured,
@@ -47,6 +48,7 @@ def get_provider_health() -> dict:
             'model': model,
             'configured': health.get('configured', configured),
             'implemented': health.get('implemented', implemented),
+            'supports_images': supports_images,
             'reachable': health.get('reachable', False),
             'active_in_runtime_mode': active,
         }

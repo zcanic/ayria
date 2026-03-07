@@ -36,14 +36,22 @@ class RuntimeContainer:
         self.task_service = TaskService(self.task_repo)
         self.context_service = ContextService(self.world_state_repo, self.message_repo)
         self.presence_service = self._build_presence_service(last_proactive_ts=0.0)
-        self.routing_service = RoutingService(default_chat_model=self.config.capability_model)
+        self.routing_service = RoutingService(
+            default_chat_model=self.config.capability_model,
+            vision_model=self.config.vision_model,
+            complex_model=self.config.fallback_model or 'qwen3.5:9b',
+        )
         self.persona_service = PersonaService()
         self.tool_service = ToolService(self.tool_registry, world_state_repo=self.world_state_repo)
         self.model_execution_service = ModelExecutionService(
             provider_stub_mode=self.config.provider_stub_mode,
             providers=self.llm_providers,
         )
-        self.screenshot_analyzer = ScreenshotAnalyzer()
+        self.screenshot_analyzer = ScreenshotAnalyzer(
+            model_execution_service=self.model_execution_service,
+            provider_name=self.config.screenshot_analysis_provider,
+            model=self.config.screenshot_analysis_model,
+        )
 
         self.orchestrator = Orchestrator(
             task_service=self.task_service,
@@ -60,11 +68,20 @@ class RuntimeContainer:
     def apply_config(self, next_config: AppConfig) -> None:
         last_proactive_ts = self.presence_service.last_proactive_ts
         self.config = next_config
-        self.routing_service = RoutingService(default_chat_model=self.config.capability_model)
+        self.routing_service = RoutingService(
+            default_chat_model=self.config.capability_model,
+            vision_model=self.config.vision_model,
+            complex_model=self.config.fallback_model or 'qwen3.5:9b',
+        )
         self.presence_service = self._build_presence_service(last_proactive_ts=last_proactive_ts)
         self.model_execution_service = ModelExecutionService(
             provider_stub_mode=self.config.provider_stub_mode,
             providers=self.llm_providers,
+        )
+        self.screenshot_analyzer = ScreenshotAnalyzer(
+            model_execution_service=self.model_execution_service,
+            provider_name=self.config.screenshot_analysis_provider,
+            model=self.config.screenshot_analysis_model,
         )
         self.orchestrator = Orchestrator(
             task_service=self.task_service,

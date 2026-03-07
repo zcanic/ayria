@@ -18,6 +18,12 @@ def get_config() -> dict:
 
 
 class UpdateConfigRequest(BaseModel):
+    default_provider: str | None = None
+    capability_model: str | None = None
+    vision_provider: str | None = None
+    vision_model: str | None = None
+    screenshot_analysis_provider: str | None = None
+    screenshot_analysis_model: str | None = None
     proactive_enabled: bool | None = None
     proactive_cooldown_seconds: int | None = None
     screenshot_enabled: bool | None = None

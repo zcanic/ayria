@@ -87,7 +87,7 @@ class Orchestrator:
             id=f"user_{task.id}",
             role='user',
             source='ui',
-            parts=[MessagePart(type='text', text=text)],
+            parts=[MessagePart(type='text', text=text)] + [MessagePart(type='image', image_url=path) for path in (image_paths or [])],
             created_at=_now_iso(),
         )
         self._message_repo.append(user_message)
@@ -130,6 +130,7 @@ class Orchestrator:
                     provider_name=route.provider,
                     model=route.model,
                     text=capability_text,
+                    image_paths=image_paths or None,
                 )
             )
             raw_model_text = str(provider_result.get('message', '')).strip()
