@@ -16,9 +16,9 @@ class RoutingService:
     def __init__(
         self,
         *,
-        default_chat_model: str = 'Qwen3.5-0.8B',
+        default_chat_model: str = 'qwen3.5:0.8b',
         vision_model: str = 'Qwen2.5-VL-3B',
-        complex_model: str = 'Qwen3.5-9B',
+        complex_model: str = 'qwen3.5:9b',
     ) -> None:
         self._default_chat_model = default_chat_model
         self._vision_model = vision_model

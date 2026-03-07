@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 import pytest
+import asyncio
 
 from app.domain.services.model_execution_service import ModelExecutionService
 from app.domain.services.presence_service import PresenceService
@@ -54,9 +55,25 @@ def test_chat_send_in_stub_mode_is_truthful(runtime_client: TestClient) -> None:
     assert body['task']['status'] == 'failed'
 
 
-def test_chat_send_live_mode_with_unreachable_provider_fails_truthfully(runtime_client: TestClient) -> None:
-    runtime_client.put('/api/v1/config', json={'provider_stub_mode': False})
-    response = runtime_client.post('/api/v1/chat/send', json={'text': 'hello', 'image_paths': []})
+def test_chat_send_live_mode_with_unreachable_provider_fails_truthfully(runtime_env: dict) -> None:
+    class FakeUnreachableProvider:
+        implemented = True
+        provider_id = 'ollama'
+
+        async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+            raise AssertionError('chat should not run when provider health probe fails')
+
+        async def health_check(self, model: str | None = None) -> dict:
+            raise RuntimeError('All connection attempts failed')
+
+    client = runtime_env['client']
+    container = runtime_env['container']
+    container.config.provider_stub_mode = False
+    container.llm_providers['ollama'] = FakeUnreachableProvider()
+    container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
+    container.orchestrator._model_execution_service = container.model_execution_service
+
+    response = client.post('/api/v1/chat/send', json={'text': 'hello', 'image_paths': []})
     assert response.status_code == 200
     body = response.json()
     assert body['status'] == 'failed'
@@ -87,8 +104,51 @@ def test_chat_send_live_mode_with_missing_model_reports_install_guidance(runtime
     body = response.json()
     assert body['status'] == 'failed'
     assert body['provider_call_occurred'] is True
-    assert 'model_not_pulled:ollama:Qwen3.5-0.8B' in body['error']
-    assert 'ollama pull Qwen3.5-0.8B' in body['error']
+    assert 'model_not_pulled:ollama:qwen3.5:0.8b' in body['error']
+    assert 'ollama pull qwen3.5:0.8b' in body['error']
+
+
+def test_ollama_provider_normalizes_hf_style_model_aliases() -> None:
+    from app.providers.llm.ollama_provider import OllamaProvider
+
+    provider = OllamaProvider()
+    assert provider.normalize_model_name('Qwen3.5-0.8B') == 'qwen3.5:0.8b'
+    assert provider.normalize_model_name('Qwen3.5-9B') == 'qwen3.5:9b'
+    assert provider.normalize_model_name('custom-model') == 'custom-model'
+
+
+def test_ollama_provider_disables_proxy_env_for_health_checks(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.providers.llm import ollama_provider as ollama_module
+    from app.providers.llm.ollama_provider import OllamaProvider
+
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {'models': [{'name': 'qwen3.5:0.8b'}]}
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs) -> None:
+            captured.update(kwargs)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url: str) -> FakeResponse:
+            return FakeResponse()
+
+    monkeypatch.setattr(ollama_module.httpx, 'AsyncClient', FakeClient)
+
+    provider = OllamaProvider()
+    result = asyncio.run(provider.health_check(model='qwen3.5:0.8b'))
+    assert captured['trust_env'] is False
+    assert result['status'] == 'ok'
 
 
 def test_chat_send_provider_unavailable_fails_truthfully(runtime_env: dict) -> None:
@@ -273,15 +333,35 @@ def test_providers_endpoint_reports_stub_and_health_semantics(runtime_client: Te
     assert ollama_health['status'] == 'stub_mode'
 
 
-def test_providers_endpoint_reports_live_mode_not_implemented(runtime_client: TestClient) -> None:
-    runtime_client.put('/api/v1/config', json={'provider_stub_mode': False})
-    providers = runtime_client.get('/api/v1/providers').json()
+def test_providers_endpoint_reports_live_mode_with_reachable_provider(runtime_env: dict) -> None:
+    class FakeHealthyProvider:
+        implemented = True
+        provider_id = 'ollama'
+
+        def normalize_model_name(self, model: str) -> str:
+            return model
+
+        async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+            return {'provider': 'ollama', 'model': model, 'message': 'unused'}
+
+        async def health_check(self, model: str | None = None) -> dict:
+            return {'configured': True, 'implemented': True, 'reachable': True, 'status': 'ok'}
+
+    client = runtime_env['client']
+    container = runtime_env['container']
+    container.config.provider_stub_mode = False
+    container.llm_providers['ollama'] = FakeHealthyProvider()
+    container.model_execution_service = ModelExecutionService(provider_stub_mode=False, providers=container.llm_providers)
+    container.orchestrator._model_execution_service = container.model_execution_service
+
+    providers = client.get('/api/v1/providers').json()
     assert providers['runtime_mode'] == 'live'
     ollama = next(item for item in providers['items'] if item['id'] == 'ollama')
     assert ollama['configured'] is True
     assert ollama['implemented'] is True
     assert ollama['active_in_runtime_mode'] is True
+    assert ollama['status'] == 'ok'
 
-    health = runtime_client.get('/api/v1/health/providers').json()
+    health = client.get('/api/v1/health/providers').json()
     ollama_health = next(item for item in health['providers'] if item['id'] == 'ollama')
-    assert ollama_health['status'] == 'error:All connection attempts failed'
+    assert ollama_health['status'] == 'ok'

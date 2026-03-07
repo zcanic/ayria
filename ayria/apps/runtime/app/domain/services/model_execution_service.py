@@ -16,12 +16,21 @@ class ModelExecutionService:
             raise RuntimeError(f'provider_unavailable:{provider_name}')
         if not bool(getattr(provider, 'implemented', False)):
             raise RuntimeError(f'provider_not_implemented:{provider_name}')
-        health = await self.check_provider_health(provider_name=provider_name, model=model)
-        if health.get('status') == 'model_not_pulled':
+        resolved_model = model
+        normalize_model_name = getattr(provider, 'normalize_model_name', None)
+        if callable(normalize_model_name):
+            resolved_model = str(normalize_model_name(model))
+        health = await self.check_provider_health(provider_name=provider_name, model=resolved_model)
+        health_status = str(health.get('status', ''))
+        if health_status == 'model_not_pulled':
             raise RuntimeError(
-                f"model_not_pulled:{provider_name}:{model}:Install it first with `ollama pull {model}`"
+                f"model_not_pulled:{provider_name}:{resolved_model}:Install it first with `ollama pull {resolved_model}`"
             )
-        return await provider.chat(messages=[{'role': 'user', 'content': text}], model=model, tools=None)
+        if health_status.startswith('error:'):
+            raise RuntimeError(health_status.split(':', 1)[1])
+        if health_status not in {'', 'ok'}:
+            raise RuntimeError(f'provider_health_not_ok:{provider_name}:{health_status}')
+        return await provider.chat(messages=[{'role': 'user', 'content': text}], model=resolved_model, tools=None)
 
     async def check_provider_health(self, *, provider_name: str, model: str | None) -> dict:
         provider = self._providers.get(provider_name)

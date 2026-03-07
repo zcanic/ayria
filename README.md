@@ -9,7 +9,6 @@ This repository root contains product research, handoff documents, and the `ayri
 ## Key Root Documents
 
 - [AGENT_START_HERE.md](/Volumes/zcan mac/nyatter/AGENT_START_HERE.md)
-- [AGENT_REVIEW_COMMENTS.md](/Volumes/zcan mac/nyatter/AGENT_REVIEW_COMMENTS.md)
 - [ayria-架构设计与可行性研究.md](/Volumes/zcan mac/nyatter/ayria-架构设计与可行性研究.md)
 - [猫娘陪伴Agent需求总结.md](/Volumes/zcan mac/nyatter/猫娘陪伴Agent需求总结.md)
 
@@ -19,7 +18,6 @@ This repository root contains product research, handoff documents, and the `ayri
 2. `ayria-架构设计与可行性研究.md`
 3. `ayria/README.md`
 4. `ayria/docs/architecture/`
-5. current review comments before implementation work
 
 ## Purpose
 
@@ -29,3 +27,4 @@ The repository structure and handoff documents are designed to keep future agent
 Current runtime default:
 - scaffold mode is still the default
 - a real Ollama-backed local inference path now exists for live-mode integration work
+- live mode has been smoke-tested against local `Ollama` with `qwen3.5:0.8b`

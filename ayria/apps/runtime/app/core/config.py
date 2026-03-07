@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 
 class AppConfig(BaseModel):
     default_provider: str = 'ollama'
-    capability_model: str = 'Qwen3.5-0.8B'
+    capability_model: str = 'qwen3.5:0.8b'
     persona_model: str | None = None
     fallback_provider: str | None = None
     fallback_model: str | None = None

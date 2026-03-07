@@ -12,6 +12,9 @@ class LLMProvider(Protocol):
     provider_id: str
     implemented: bool
 
+    def normalize_model_name(self, model: str) -> str:
+        ...
+
     async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
         ...
 
