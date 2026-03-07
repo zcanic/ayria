@@ -1,0 +1,63 @@
+{
+  "scenario_id": "screenshot_blocked_blacklisted_app",
+  "scenario_version": "v1",
+  "purpose": "Verify that screenshot ingestion is blocked before analysis when the active app is blacklisted.",
+  "runtime_mode": "stub",
+  "provider": "ollama",
+  "model": "qwen3.5:0.8b",
+  "config_overrides": {
+    "provider_stub_mode": true,
+    "screenshot_enabled": true,
+    "blacklisted_apps": ["SecretsApp"]
+  },
+  "fixture_refs": [],
+  "steps": [
+    {
+      "step_id": "seed_blacklisted_window",
+      "kind": "http_request",
+      "method": "POST",
+      "path": "/api/v1/events/window-changed",
+      "payload": {
+        "app_name": "SecretsApp",
+        "window_title": "vault",
+        "url": null
+      }
+    },
+    {
+      "step_id": "capture_screenshot",
+      "kind": "http_request",
+      "method": "POST",
+      "path": "/api/v1/events/screenshot-captured",
+      "payload": {
+        "image_path": "/tmp/nope.png",
+        "captured_at": "2026-03-07T00:00:00Z"
+      }
+    }
+  ],
+  "scoring": [
+    {
+      "rule_id": "policy_blocked",
+      "type": "policy_assertion",
+      "target": "steps.capture_screenshot.response_body.policy_blocked",
+      "expected": true
+    },
+    {
+      "rule_id": "policy_reason",
+      "type": "exact_match",
+      "target": "steps.capture_screenshot.response_body.policy_reason",
+      "expected": "blacklisted_app"
+    },
+    {
+      "rule_id": "analysis_skipped",
+      "type": "policy_assertion",
+      "target": "steps.capture_screenshot.response_body.analyzed",
+      "expected": false
+    },
+    {
+      "rule_id": "storage_skipped",
+      "type": "policy_assertion",
+      "target": "steps.capture_screenshot.response_body.stored",
+      "expected": false
+    }
+  ]
+}

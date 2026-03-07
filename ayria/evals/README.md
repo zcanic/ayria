@@ -114,6 +114,8 @@ The first scenarios in this repo are intentionally narrow:
 
 1. `basic_chat_exact_match`
 2. `provider_health_and_install_guidance`
+3. `screenshot_blocked_blacklisted_app`
+4. `stub_mode_truthful_chat`
 
 These are valuable because they test the things most likely to silently rot:
 
@@ -130,6 +132,21 @@ When changing provider, routing, prompt, or runtime-policy code:
 2. run at least one standardized eval scenario from this directory
 3. save the result in a structured format
 4. compare it to the previous baseline before claiming improvement
+
+## Runner
+
+Current runner entrypoint:
+
+- `uv run python -m app.evals.runner --list`
+- `uv run python -m app.evals.runner --scenario ../../evals/scenarios/basic_chat_exact_match/scenario.json`
+
+Current output:
+
+- result JSON
+- Markdown summary
+
+Generated artifacts under `evals/results/` are intentionally git-ignored.
+Treat them as reproducible run outputs, not as default source files.
 
 ## Important Constraint
 

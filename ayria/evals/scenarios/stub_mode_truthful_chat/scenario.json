@@ -1,0 +1,44 @@
+{
+  "scenario_id": "stub_mode_truthful_chat",
+  "scenario_version": "v1",
+  "purpose": "Verify that stub mode reports scaffold behavior truthfully instead of pretending to have done provider inference.",
+  "runtime_mode": "stub",
+  "provider": "ollama",
+  "model": "qwen3.5:0.8b",
+  "config_overrides": {
+    "provider_stub_mode": true
+  },
+  "fixture_refs": [],
+  "steps": [
+    {
+      "step_id": "send_chat",
+      "kind": "http_request",
+      "method": "POST",
+      "path": "/api/v1/chat/send",
+      "payload": {
+        "text": "hello",
+        "image_paths": []
+      }
+    }
+  ],
+  "scoring": [
+    {
+      "rule_id": "stub_status",
+      "type": "exact_match",
+      "target": "steps.send_chat.response_body.status",
+      "expected": "degraded"
+    },
+    {
+      "rule_id": "stub_inference_mode",
+      "type": "exact_match",
+      "target": "steps.send_chat.response_body.inference_mode",
+      "expected": "stub"
+    },
+    {
+      "rule_id": "provider_call_absent",
+      "type": "policy_assertion",
+      "target": "steps.send_chat.response_body.provider_call_occurred",
+      "expected": false
+    }
+  ]
+}
