@@ -1,13 +1,11 @@
 {
-  "scenario_id": "provider_health_and_install_guidance",
+  "scenario_id": "provider_live_health_ok",
   "scenario_version": "v1",
-  "purpose": "Verify that provider inventory is truthful and missing-model states produce actionable install guidance.",
+  "purpose": "Verify that provider inventory and provider health endpoints report a truthful healthy live local provider state.",
   "runtime_mode": "live",
   "provider": "ollama",
   "model": "qwen3.5:0.8b",
-  "config_overrides": {
-    "provider_stub_mode": false
-  },
+  "config_overrides": {},
   "fixture_refs": [],
   "steps": [
     {

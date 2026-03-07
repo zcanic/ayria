@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from app.evals.catalog import list_scenario_paths
-from app.evals.runner import run_scenario
+from app.evals.runner import _effective_config_overrides, run_scenario
 
 
 def test_basic_chat_exact_match_scenario_runs_with_fake_provider(monkeypatch) -> None:
@@ -88,10 +88,10 @@ def test_provider_health_scenario_runs_with_fake_provider(monkeypatch) -> None:
 
     monkeypatch.setattr(harness, 'runtime_client', fake_runtime_client)
     monkeypatch.setattr(eval_runner, 'runtime_client', fake_runtime_client)
-    scenario_path = Path(__file__).resolve().parents[5] / 'evals/scenarios/provider_health_and_install_guidance/scenario.json'
+    scenario_path = Path(__file__).resolve().parents[5] / 'evals/scenarios/provider_live_health_ok/scenario.json'
     result, _ = run_scenario(scenario_path, write_artifacts=False)
     assert result.passed is True
-    assert result.scenario_id == 'provider_health_and_install_guidance'
+    assert result.scenario_id == 'provider_live_health_ok'
     live_mode_score = next(item for item in result.scores if item.rule_id == 'providers_live_mode')
     assert live_mode_score.actual == 'live'
 
@@ -99,7 +99,8 @@ def test_provider_health_scenario_runs_with_fake_provider(monkeypatch) -> None:
 def test_scenario_catalog_lists_new_standard_scenarios() -> None:
     names = {path.parent.name for path in list_scenario_paths()}
     assert 'basic_chat_exact_match' in names
-    assert 'provider_health_and_install_guidance' in names
+    assert 'provider_live_health_ok' in names
+    assert 'provider_missing_model_install_guidance' in names
     assert 'screenshot_blocked_blacklisted_app' in names
     assert 'stub_mode_truthful_chat' in names
 
@@ -119,3 +120,36 @@ def test_screenshot_blocked_blacklisted_app_scenario_runs() -> None:
     assert result.passed is True
     blocked_score = next(item for item in result.scores if item.rule_id == 'policy_blocked')
     assert blocked_score.actual is True
+
+
+def test_provider_missing_model_install_guidance_scenario_runs() -> None:
+    scenario_path = Path(__file__).resolve().parents[5] / 'evals/scenarios/provider_missing_model_install_guidance/scenario.json'
+    result, _ = run_scenario(scenario_path, write_artifacts=False)
+    assert result.passed is True
+    install_score = next(item for item in result.scores if item.rule_id == 'install_guidance')
+    assert 'ollama pull qwen3.5:0.8b' in str(install_score.actual)
+
+
+def test_effective_config_overrides_enforce_runtime_mode() -> None:
+    from app.evals.models import EvalScenario
+
+    scenario = EvalScenario(
+        scenario_id='bad_runtime_mode',
+        scenario_version='v1',
+        purpose='test',
+        runtime_mode='live',
+        provider='ollama',
+        model='qwen3.5:0.8b',
+        mock_profile=None,
+        config_overrides={'provider_stub_mode': True},
+        fixture_refs=[],
+        steps=[],
+        scoring=[],
+    )
+
+    try:
+        _effective_config_overrides(scenario)
+    except ValueError as error:
+        assert 'scenario_runtime_mode_mismatch' in str(error)
+    else:
+        raise AssertionError('expected runtime-mode mismatch to fail')

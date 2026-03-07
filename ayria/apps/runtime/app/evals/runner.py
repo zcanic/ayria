@@ -15,6 +15,7 @@ from pathlib import Path
 
 from app.evals.catalog import list_scenario_paths
 from app.evals.loader import load_fixture, load_scenario, repo_root
+from app.evals.mock_profiles import apply_mock_profile
 from app.evals.models import EvalRunResult, StepResult
 from app.evals.result_writer import default_result_path, write_result
 from app.evals.runtime_harness import delay_ms, runtime_client, seed_world_state
@@ -39,14 +40,43 @@ def _git_commit() -> str:
         return 'unknown'
 
 
+def _effective_config_overrides(scenario) -> dict:
+    overrides = dict(scenario.config_overrides)
+
+    desired_stub_mode = scenario.runtime_mode == 'stub'
+    if 'provider_stub_mode' in overrides and bool(overrides['provider_stub_mode']) != desired_stub_mode:
+        raise ValueError(
+            f"scenario_runtime_mode_mismatch:{scenario.scenario_id}:runtime_mode={scenario.runtime_mode}:provider_stub_mode={overrides['provider_stub_mode']}"
+        )
+    overrides['provider_stub_mode'] = desired_stub_mode
+
+    if 'default_provider' in overrides and overrides['default_provider'] != scenario.provider:
+        raise ValueError(
+            f"scenario_provider_mismatch:{scenario.scenario_id}:provider={scenario.provider}:default_provider={overrides['default_provider']}"
+        )
+    overrides['default_provider'] = scenario.provider
+
+    if scenario.provider == 'ollama':
+        if 'capability_model' in overrides and overrides['capability_model'] != scenario.model:
+            raise ValueError(
+                f"scenario_model_mismatch:{scenario.scenario_id}:model={scenario.model}:capability_model={overrides['capability_model']}"
+            )
+        overrides['capability_model'] = scenario.model
+
+    return overrides
+
+
 def run_scenario(scenario_path: str | Path, *, write_artifacts: bool = True) -> tuple[EvalRunResult, Path]:
     scenario = load_scenario(scenario_path)
+    config_overrides = _effective_config_overrides(scenario)
     started_at = _now_iso()
     run_started = time.perf_counter()
     step_results: list[StepResult] = []
     notes: list[str] = []
 
-    with runtime_client(config_overrides=scenario.config_overrides) as (client, container):
+    with runtime_client(config_overrides=config_overrides) as (client, container):
+        if scenario.mock_profile:
+            apply_mock_profile(container, scenario.mock_profile)
         for fixture_ref in scenario.fixture_refs:
             if fixture_ref.startswith('fixtures/world_state/'):
                 seed_world_state(container, load_fixture(fixture_ref))
@@ -111,7 +141,7 @@ def run_scenario(scenario_path: str | Path, *, write_artifacts: bool = True) -> 
             'platform': platform.platform(),
             'python_version': platform.python_version(),
         },
-        config_snapshot=scenario.config_overrides,
+        config_snapshot=config_overrides,
         notes=notes,
         scores=score_results,
         steps=step_results,

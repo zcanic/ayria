@@ -113,9 +113,10 @@ comparison.
 The first scenarios in this repo are intentionally narrow:
 
 1. `basic_chat_exact_match`
-2. `provider_health_and_install_guidance`
-3. `screenshot_blocked_blacklisted_app`
-4. `stub_mode_truthful_chat`
+2. `provider_live_health_ok`
+3. `provider_missing_model_install_guidance`
+4. `screenshot_blocked_blacklisted_app`
+5. `stub_mode_truthful_chat`
 
 These are valuable because they test the things most likely to silently rot:
 

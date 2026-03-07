@@ -32,6 +32,7 @@ class EvalScenario(BaseModel):
     runtime_mode: str
     provider: str
     model: str
+    mock_profile: str | None = None
     config_overrides: dict = Field(default_factory=dict)
     fixture_refs: list[str] = Field(default_factory=list)
     steps: list[EvalStep]

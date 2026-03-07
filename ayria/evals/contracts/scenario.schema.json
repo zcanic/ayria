@@ -33,6 +33,9 @@
     "model": {
       "type": "string"
     },
+    "mock_profile": {
+      "type": ["string", "null"]
+    },
     "config_overrides": {
       "type": "object"
     },

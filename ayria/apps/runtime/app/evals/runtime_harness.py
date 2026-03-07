@@ -12,7 +12,6 @@ import time
 
 from fastapi.testclient import TestClient
 
-from app.core.config import AppConfig
 from app.domain.models.world_state import ActiveWindow
 from app.main import app
 from app.runtime_container import RuntimeContainer

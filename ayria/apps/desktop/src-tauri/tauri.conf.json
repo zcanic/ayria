@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ayria",
+  "version": "0.1.0",
+  "identifier": "ai.zcan.ayria",
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "ayria",
+        "width": 1200,
+        "height": 800
+      }
+    ]
+  }
+}

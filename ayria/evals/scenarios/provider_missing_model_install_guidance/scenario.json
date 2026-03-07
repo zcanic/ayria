@@ -1,0 +1,43 @@
+{
+  "scenario_id": "provider_missing_model_install_guidance",
+  "scenario_version": "v1",
+  "purpose": "Verify that a missing local model fails truthfully and returns actionable install guidance.",
+  "runtime_mode": "live",
+  "provider": "ollama",
+  "model": "qwen3.5:0.8b",
+  "mock_profile": "missing_model_ollama",
+  "config_overrides": {},
+  "fixture_refs": [],
+  "steps": [
+    {
+      "step_id": "send_chat",
+      "kind": "http_request",
+      "method": "POST",
+      "path": "/api/v1/chat/send",
+      "payload": {
+        "text": "hello",
+        "image_paths": []
+      }
+    }
+  ],
+  "scoring": [
+    {
+      "rule_id": "failed_status",
+      "type": "exact_match",
+      "target": "steps.send_chat.response_body.status",
+      "expected": "failed"
+    },
+    {
+      "rule_id": "provider_error_mode",
+      "type": "exact_match",
+      "target": "steps.send_chat.response_body.inference_mode",
+      "expected": "provider_error"
+    },
+    {
+      "rule_id": "install_guidance",
+      "type": "substring_match",
+      "target": "steps.send_chat.response_body.error",
+      "expected": "ollama pull qwen3.5:0.8b"
+    }
+  ]
+}
