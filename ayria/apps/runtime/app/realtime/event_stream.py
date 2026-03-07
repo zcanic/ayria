@@ -24,12 +24,16 @@ class EventStream:
         self._events: deque[dict] = deque(maxlen=max_events)
         self._next_seq = 1
         self._lock = Lock()
+        self._max_events = max_events
 
-    def publish(self, event_type: str, payload: dict) -> dict:
+    def publish(self, event_type: str, payload: dict, *, source: str = 'runtime') -> dict:
         with self._lock:
+            seq = self._next_seq
             event = {
-                'seq': self._next_seq,
+                'id': f'evt_{seq:09d}',
+                'seq': seq,
                 'type': event_type,
+                'source': source,
                 'timestamp': _now_iso(),
                 'payload': payload,
             }
@@ -40,3 +44,19 @@ class EventStream:
     def list_after(self, seq: int) -> list[dict]:
         with self._lock:
             return [dict(event) for event in self._events if int(event['seq']) > seq]
+
+    def oldest_seq(self) -> int | None:
+        with self._lock:
+            if not self._events:
+                return None
+            return int(self._events[0]['seq'])
+
+    def make_transient_event(self, event_type: str, payload: dict, *, source: str = 'runtime', seq: int = 0) -> dict:
+        return {
+            'id': f'transient_{event_type}_{seq}',
+            'seq': seq,
+            'type': event_type,
+            'source': source,
+            'timestamp': _now_iso(),
+            'payload': payload,
+        }

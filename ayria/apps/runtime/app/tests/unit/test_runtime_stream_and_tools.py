@@ -7,6 +7,7 @@ import pytest
 from app.main import app
 from app.domain.services.model_execution_service import ModelExecutionService
 from app.providers.vision.screenshot_analyzer import ScreenshotAnalyzer
+from app.realtime.event_stream import EventStream
 from app.runtime_container import RuntimeContainer
 
 
@@ -44,6 +45,8 @@ def test_websocket_receives_world_state_patch(runtime_env: dict) -> None:
     with client.websocket_connect('/api/v1/ws') as websocket:
         ready = websocket.receive_json()
         assert ready['type'] == 'connection.ready'
+        assert ready['source'] == 'runtime'
+        assert 'id' in ready
         client.post('/api/v1/events/window-changed', json={'app_name': 'Cursor', 'window_title': 'main.py', 'url': None})
         first = websocket.receive_json()
         second = websocket.receive_json()
@@ -72,6 +75,49 @@ def test_tools_inventory_and_confirmation_rule(runtime_env: dict, tmp_path: Path
     )
     assert allowed.status_code == 200
     assert allowed.json()['result']['content'] == 'hello from file'
+
+
+def test_tool_result_event_is_sanitized(runtime_env: dict, tmp_path: Path) -> None:
+    client = runtime_env['client']
+    sample = tmp_path / 'secret.txt'
+    sample.write_text('very secret content')
+
+    with client.websocket_connect('/api/v1/ws') as websocket:
+        websocket.receive_json()
+        response = client.post(
+            '/api/v1/tools/execute',
+            json={'tool_name': 'read_file', 'input_payload': {'path': str(sample)}, 'confirmed': True},
+        )
+        assert response.status_code == 200
+
+        events = [websocket.receive_json(), websocket.receive_json()]
+        result_event = next(event for event in events if event['type'] == 'tool.result')
+        assert result_event['payload']['tool_name'] == 'read_file'
+        assert result_event['payload']['content_length'] == len('very secret content')
+        assert 'content' not in result_event['payload']
+
+
+def test_config_update_publishes_config_updated_event(runtime_env: dict) -> None:
+    client = runtime_env['client']
+    with client.websocket_connect('/api/v1/ws') as websocket:
+        websocket.receive_json()
+        response = client.put('/api/v1/config', json={'persona_intensity': 'low'})
+        assert response.status_code == 200
+        event = websocket.receive_json()
+        while event['type'] != 'config.updated':
+            event = websocket.receive_json()
+        assert event['payload']['diff']['persona_intensity']['current'] == 'low'
+
+
+def test_event_stream_reports_dropped_gap() -> None:
+    stream = EventStream(max_events=2)
+    stream.publish('one', {}, source='runtime')
+    stream.publish('two', {}, source='runtime')
+    stream.publish('three', {}, source='runtime')
+    assert stream.oldest_seq() == 2
+    dropped = stream.make_transient_event('events.dropped', {'from_seq': 1, 'to_seq': 1, 'dropped_count': 1}, seq=1)
+    assert dropped['type'] == 'events.dropped'
+    assert dropped['source'] == 'runtime'
 
 
 def test_screenshot_analyzer_returns_structured_non_stub_data(runtime_env: dict) -> None:

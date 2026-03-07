@@ -16,6 +16,9 @@ class ToolRegistry:
                 input_schema={'type': 'object', 'properties': {'query': {'type': 'string'}}, 'required': ['query']},
                 requires_confirmation=True,
                 timeout_seconds=20,
+                permission_level='external_read',
+                data_sensitivity='low',
+                event_result_mode='metadata_only',
             ),
             ToolSpec(
                 name='read_file',
@@ -23,6 +26,9 @@ class ToolRegistry:
                 input_schema={'type': 'object', 'properties': {'path': {'type': 'string'}}, 'required': ['path']},
                 requires_confirmation=True,
                 timeout_seconds=10,
+                permission_level='sensitive_read',
+                data_sensitivity='high',
+                event_result_mode='metadata_only',
             ),
             ToolSpec(
                 name='desktop_snapshot',
@@ -30,6 +36,9 @@ class ToolRegistry:
                 input_schema={'type': 'object', 'properties': {}},
                 requires_confirmation=False,
                 timeout_seconds=10,
+                permission_level='safe_read',
+                data_sensitivity='medium',
+                event_result_mode='metadata_only',
             ),
             ToolSpec(
                 name='clipboard_read',
@@ -37,6 +46,9 @@ class ToolRegistry:
                 input_schema={'type': 'object', 'properties': {}},
                 requires_confirmation=True,
                 timeout_seconds=5,
+                permission_level='sensitive_read',
+                data_sensitivity='high',
+                event_result_mode='metadata_only',
             ),
             ToolSpec(
                 name='memory_lookup',
@@ -44,6 +56,9 @@ class ToolRegistry:
                 input_schema={'type': 'object', 'properties': {'query': {'type': 'string'}}, 'required': ['query']},
                 requires_confirmation=False,
                 timeout_seconds=5,
+                permission_level='safe_read',
+                data_sensitivity='medium',
+                event_result_mode='metadata_only',
             ),
         ]
 

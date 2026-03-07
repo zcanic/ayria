@@ -16,10 +16,12 @@ from app.providers.llm.mlx_provider import MLXProvider
 from app.providers.llm.ollama_provider import OllamaProvider
 from app.providers.tools.registry import ToolRegistry
 from app.realtime.event_stream import EventStream
+from threading import Lock
 
 
 class RuntimeContainer:
     def __init__(self) -> None:
+        self._graph_lock = Lock()
         self.config = AppConfig()
 
         self.world_state_repo = WorldStateRepository()
@@ -37,8 +39,11 @@ class RuntimeContainer:
         self.context_service = ContextService(self.world_state_repo, self.message_repo)
         self.presence_service = self._build_presence_service(last_proactive_ts=0.0)
         self.routing_service = RoutingService(
+            default_provider=self.config.default_provider,
             default_chat_model=self.config.capability_model,
+            vision_provider=self.config.vision_provider,
             vision_model=self.config.vision_model,
+            complex_provider=self.config.fallback_provider or self.config.default_provider,
             complex_model=self.config.fallback_model or 'qwen3.5:9b',
         )
         self.persona_service = PersonaService()
@@ -63,37 +68,55 @@ class RuntimeContainer:
             message_repo=self.message_repo,
             world_state_repo=self.world_state_repo,
             event_stream=self.event_stream,
+            persona_intensity=self.config.persona_intensity,
         )
 
     def apply_config(self, next_config: AppConfig) -> None:
-        last_proactive_ts = self.presence_service.last_proactive_ts
-        self.config = next_config
-        self.routing_service = RoutingService(
-            default_chat_model=self.config.capability_model,
-            vision_model=self.config.vision_model,
-            complex_model=self.config.fallback_model or 'qwen3.5:9b',
-        )
-        self.presence_service = self._build_presence_service(last_proactive_ts=last_proactive_ts)
-        self.model_execution_service = ModelExecutionService(
-            provider_stub_mode=self.config.provider_stub_mode,
-            providers=self.llm_providers,
-        )
-        self.screenshot_analyzer = ScreenshotAnalyzer(
-            model_execution_service=self.model_execution_service,
-            provider_name=self.config.screenshot_analysis_provider,
-            model=self.config.screenshot_analysis_model,
-        )
-        self.orchestrator = Orchestrator(
-            task_service=self.task_service,
-            context_service=self.context_service,
-            routing_service=self.routing_service,
-            persona_service=self.persona_service,
-            model_execution_service=self.model_execution_service,
-            presence_service=self.presence_service,
-            message_repo=self.message_repo,
-            world_state_repo=self.world_state_repo,
-            event_stream=self.event_stream,
-        )
+        with self._graph_lock:
+            last_proactive_ts = self.presence_service.last_proactive_ts
+            next_presence_service = PresenceService(
+                proactive_enabled=next_config.proactive_enabled,
+                cooldown_seconds=next_config.proactive_cooldown_seconds,
+                blacklisted_apps=next_config.blacklisted_apps,
+                blocked_scene_types=next_config.screenshot_blocked_scene_types,
+                last_proactive_ts=last_proactive_ts,
+            )
+            next_routing_service = RoutingService(
+                default_provider=next_config.default_provider,
+                default_chat_model=next_config.capability_model,
+                vision_provider=next_config.vision_provider,
+                vision_model=next_config.vision_model,
+                complex_provider=next_config.fallback_provider or next_config.default_provider,
+                complex_model=next_config.fallback_model or 'qwen3.5:9b',
+            )
+            next_model_execution_service = ModelExecutionService(
+                provider_stub_mode=next_config.provider_stub_mode,
+                providers=self.llm_providers,
+            )
+            next_screenshot_analyzer = ScreenshotAnalyzer(
+                model_execution_service=next_model_execution_service,
+                provider_name=next_config.screenshot_analysis_provider,
+                model=next_config.screenshot_analysis_model,
+            )
+            next_orchestrator = Orchestrator(
+                task_service=self.task_service,
+                context_service=self.context_service,
+                routing_service=next_routing_service,
+                persona_service=self.persona_service,
+                model_execution_service=next_model_execution_service,
+                presence_service=next_presence_service,
+                message_repo=self.message_repo,
+                world_state_repo=self.world_state_repo,
+                event_stream=self.event_stream,
+                persona_intensity=next_config.persona_intensity,
+            )
+
+            self.config = next_config
+            self.routing_service = next_routing_service
+            self.presence_service = next_presence_service
+            self.model_execution_service = next_model_execution_service
+            self.screenshot_analyzer = next_screenshot_analyzer
+            self.orchestrator = next_orchestrator
 
     def _build_presence_service(self, *, last_proactive_ts: float) -> PresenceService:
         return PresenceService(

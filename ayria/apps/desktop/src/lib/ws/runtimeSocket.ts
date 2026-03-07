@@ -14,12 +14,15 @@
  */
 
 export type RuntimeEvent =
-  | { type: 'connection.ready'; payload: { status: string } }
-  | { type: 'presence.updated'; payload: Record<string, unknown> }
-  | { type: 'world_state.patched'; payload: Record<string, unknown> }
-  | { type: 'assistant.message.created'; payload: Record<string, unknown> }
-  | { type: 'task.updated'; payload: Record<string, unknown> }
-  | { type: 'tool.result'; payload: Record<string, unknown> };
+  | { id: string; seq: number; source: string; timestamp: string; type: 'connection.ready'; payload: { status: string } }
+  | { id: string; seq: number; source: string; timestamp: string; type: 'events.dropped'; payload: Record<string, unknown> }
+  | { id: string; seq: number; source: string; timestamp: string; type: 'config.updated'; payload: Record<string, unknown> }
+  | { id: string; seq: number; source: string; timestamp: string; type: 'presence.updated'; payload: Record<string, unknown> }
+  | { id: string; seq: number; source: string; timestamp: string; type: 'world_state.patched'; payload: Record<string, unknown> }
+  | { id: string; seq: number; source: string; timestamp: string; type: 'assistant.message.created'; payload: Record<string, unknown> }
+  | { id: string; seq: number; source: string; timestamp: string; type: 'task.updated'; payload: Record<string, unknown> }
+  | { id: string; seq: number; source: string; timestamp: string; type: 'tool.result'; payload: Record<string, unknown> }
+  | { id: string; seq: number; source: string; timestamp: string; type: 'tool.failed'; payload: Record<string, unknown> };
 
 export function connectRuntimeSocket(onEvent: (event: RuntimeEvent) => void) {
   const url = 'ws://127.0.0.1:8000/api/v1/ws';
@@ -28,8 +31,8 @@ export function connectRuntimeSocket(onEvent: (event: RuntimeEvent) => void) {
   socket.onmessage = (message) => {
     try {
       onEvent(JSON.parse(message.data) as RuntimeEvent);
-    } catch {
-      // Ignore malformed messages so UI remains usable during development.
+    } catch (error) {
+      console.warn('runtime_socket_message_parse_failed', error);
     }
   };
 

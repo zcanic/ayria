@@ -13,3 +13,6 @@ class ToolSpec(BaseModel):
     input_schema: dict
     requires_confirmation: bool = False
     timeout_seconds: int = 20
+    permission_level: str = 'safe_read'
+    data_sensitivity: str = 'low'
+    event_result_mode: str = 'metadata_only'

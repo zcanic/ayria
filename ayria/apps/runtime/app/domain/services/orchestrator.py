@@ -55,6 +55,7 @@ class Orchestrator:
         message_repo: MessageRepository,
         world_state_repo: WorldStateRepository,
         event_stream: EventStream,
+        persona_intensity: str = 'normal',
     ) -> None:
         self._task_service = task_service
         self._context_service = context_service
@@ -65,6 +66,7 @@ class Orchestrator:
         self._message_repo = message_repo
         self._world_state_repo = world_state_repo
         self._event_stream = event_stream
+        self._persona_intensity = persona_intensity
 
     def _set_presence(self, *, mode: str, user_active: bool) -> None:
         world_state = self._world_state_repo.set_presence(
@@ -165,7 +167,7 @@ class Orchestrator:
                 'error': reason,
             }
 
-        final_text = self._persona_service.rewrite(capability_text=raw_model_text, intensity='normal')
+        final_text = self._persona_service.rewrite(capability_text=raw_model_text, intensity=self._persona_intensity)
 
         assistant_message = ChatMessage(
             id=f"msg_{task.id}",

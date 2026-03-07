@@ -8,6 +8,7 @@ This is intentionally conservative:
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 
@@ -19,5 +20,5 @@ async def read_file(path: str) -> dict:
         raise RuntimeError(f'tool_not_a_file:{target}')
     if target.stat().st_size > 64 * 1024:
         raise RuntimeError(f'tool_file_too_large:{target}')
-    content = target.read_text(encoding='utf-8', errors='replace')
+    content = await asyncio.to_thread(target.read_text, encoding='utf-8', errors='replace')
     return {'path': str(target), 'content': content}

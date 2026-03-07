@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import asyncio
 from pathlib import Path
 
 from app.providers.llm.base import LLMProvider
@@ -23,21 +24,22 @@ class ModelExecutionService:
             raise RuntimeError(f'provider_not_implemented:{provider_name}')
         return provider
 
-    def _encode_image(self, image_path: str) -> str:
+    async def _encode_image(self, image_path: str) -> str:
         path = Path(image_path)
         if not path.exists():
             raise RuntimeError(f'image_not_found:{image_path}')
         if not path.is_file():
             raise RuntimeError(f'image_not_file:{image_path}')
         try:
-            return base64.b64encode(path.read_bytes()).decode('ascii')
+            raw = await asyncio.to_thread(path.read_bytes)
+            return base64.b64encode(raw).decode('ascii')
         except Exception as error:
             raise RuntimeError(f'image_read_failed:{image_path}:{error}') from error
 
-    def _build_messages(self, *, text: str, image_paths: list[str] | None) -> list[dict]:
+    async def _build_messages(self, *, text: str, image_paths: list[str] | None) -> list[dict]:
         message: dict[str, object] = {'role': 'user', 'content': text}
         if image_paths:
-            message['images'] = [self._encode_image(path) for path in image_paths]
+            message['images'] = [await self._encode_image(path) for path in image_paths]
         return [message]
 
     async def run_chat(
@@ -68,7 +70,7 @@ class ModelExecutionService:
         if health_status not in {'', 'ok'}:
             raise RuntimeError(f'provider_health_not_ok:{provider_name}:{health_status}')
 
-        messages = self._build_messages(text=text, image_paths=image_paths)
+        messages = await self._build_messages(text=text, image_paths=image_paths)
         return await provider.chat(messages=messages, model=resolved_model, tools=None)
 
     async def check_provider_health(self, *, provider_name: str, model: str | None) -> dict:

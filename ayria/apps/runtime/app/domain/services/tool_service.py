@@ -22,6 +22,58 @@ class ToolService:
     def list_tools(self) -> list[dict]:
         return [tool.model_dump() for tool in self._registry.list_tools()]
 
+    def get_tool(self, tool_name: str):
+        return self._registry.get_tool(tool_name)
+
+    def summarize_result_for_event(self, *, tool_name: str, result: dict) -> dict:
+        tool = self._registry.get_tool(tool_name)
+        summary = {
+            'tool_name': tool_name,
+            'event_result_mode': getattr(tool, 'event_result_mode', 'metadata_only') if tool is not None else 'metadata_only',
+        }
+        if tool_name == 'read_file':
+            content = str(result.get('content', ''))
+            summary.update(
+                {
+                    'path': result.get('path'),
+                    'content_length': len(content),
+                }
+            )
+            return summary
+        if tool_name == 'clipboard_read':
+            text = result.get('text')
+            summary.update(
+                {
+                    'available': bool(result.get('available')),
+                    'text_length': len(text) if isinstance(text, str) else 0,
+                    'reason': result.get('reason'),
+                }
+            )
+            return summary
+        if tool_name == 'web_search':
+            results = result.get('results') if isinstance(result.get('results'), list) else []
+            summary.update(
+                {
+                    'query': result.get('query'),
+                    'result_count': len(results),
+                }
+            )
+            return summary
+        if tool_name == 'desktop_snapshot':
+            summary.update(
+                {
+                    'has_active_window': result.get('active_window') is not None,
+                    'has_recent_screenshot': result.get('recent_screenshot') is not None,
+                }
+            )
+            return summary
+        if tool_name == 'memory_lookup':
+            items = result.get('items') if isinstance(result.get('items'), list) else []
+            summary.update({'query': result.get('query'), 'item_count': len(items)})
+            return summary
+        summary.update({'keys': sorted(result.keys())})
+        return summary
+
     async def execute(self, *, tool_name: str, input_payload: dict, confirmed: bool) -> dict:
         tool = self._registry.get_tool(tool_name)
         if tool is None:

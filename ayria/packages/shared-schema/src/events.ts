@@ -10,7 +10,12 @@ export type RuntimeEventType =
   | 'clipboard.changed'
   | 'screenshot.captured'
   | 'user.message.received'
+  | 'config.updated'
+  | 'events.dropped'
   | 'task.updated'
   | 'assistant.message.created'
   | 'presence.updated'
-  | 'world_state.patched';
+  | 'world_state.patched'
+  | 'tool.called'
+  | 'tool.result'
+  | 'tool.failed';

@@ -24,6 +24,8 @@ class UpdateConfigRequest(BaseModel):
     vision_model: str | None = None
     screenshot_analysis_provider: str | None = None
     screenshot_analysis_model: str | None = None
+    fallback_provider: str | None = None
+    fallback_model: str | None = None
     proactive_enabled: bool | None = None
     proactive_cooldown_seconds: int | None = None
     screenshot_enabled: bool | None = None
@@ -36,6 +38,23 @@ class UpdateConfigRequest(BaseModel):
 @router.put('')
 def update_config(request: UpdateConfigRequest) -> dict:
     patch = {key: value for key, value in request.model_dump().items() if value is not None}
+    previous = container.config.model_dump()
     next_config = container.config.model_copy(update=patch)
     container.apply_config(next_config)
-    return {'updated': True, 'config': container.config.model_dump()}
+    updated = container.config.model_dump()
+    diff = {
+        key: {
+            'previous': previous.get(key),
+            'current': updated.get(key),
+        }
+        for key in updated
+        if previous.get(key) != updated.get(key)
+    }
+    container.event_stream.publish(
+        'config.updated',
+        {
+            'diff': diff,
+            'config': updated,
+        },
+    )
+    return {'updated': True, 'config': updated, 'diff': diff}

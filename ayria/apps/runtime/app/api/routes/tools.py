@@ -25,11 +25,14 @@ def list_tools() -> dict:
 
 @router.post('/execute')
 def execute_tool(request: ExecuteToolRequest) -> dict:
+    tool = container.tool_service.get_tool(request.tool_name)
     container.event_stream.publish(
         'tool.called',
         {
             'tool_name': request.tool_name,
             'confirmed': request.confirmed,
+            'permission_level': getattr(tool, 'permission_level', None),
+            'data_sensitivity': getattr(tool, 'data_sensitivity', None),
         },
     )
     try:
@@ -41,13 +44,19 @@ def execute_tool(request: ExecuteToolRequest) -> dict:
             )
         )
     except Exception as error:
+        container.event_stream.publish(
+            'tool.failed',
+            {
+                'tool_name': request.tool_name,
+                'permission_level': getattr(tool, 'permission_level', None),
+                'data_sensitivity': getattr(tool, 'data_sensitivity', None),
+                'error': str(error),
+            },
+        )
         raise HTTPException(status_code=400, detail=str(error))
 
     container.event_stream.publish(
         'tool.result',
-        {
-            'tool_name': request.tool_name,
-            'result': result,
-        },
+        container.tool_service.summarize_result_for_event(tool_name=request.tool_name, result=result),
     )
     return {'tool_name': request.tool_name, 'result': result}

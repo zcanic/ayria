@@ -353,9 +353,11 @@ def test_config_update_changes_runtime_behavior(runtime_client: TestClient) -> N
     )
     assert config_response.status_code == 200
     config_body = config_response.json()['config']
+    diff = config_response.json()['diff']
     assert config_body['screenshot_enabled'] is False
     assert config_body['proactive_cooldown_seconds'] == 42
     assert config_body['blacklisted_apps'] == ['BankApp']
+    assert diff['screenshot_enabled']['current'] is False
 
     runtime_client.post('/api/v1/events/window-changed', json={'app_name': 'Cursor', 'window_title': 'editor', 'url': None})
     screenshot_response = runtime_client.post(
@@ -417,3 +419,38 @@ def test_providers_endpoint_reports_live_mode_with_reachable_provider(runtime_en
     health = client.get('/api/v1/health/providers').json()
     ollama_health = next(item for item in health['providers'] if item['id'] == 'ollama')
     assert ollama_health['status'] == 'ok'
+
+
+def test_default_provider_config_changes_route_provider(runtime_env: dict) -> None:
+    class FakeCloudProvider:
+        implemented = True
+        provider_id = 'cloud'
+        supports_images = False
+
+        def normalize_model_name(self, model: str) -> str:
+            return model
+
+        async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+            return {'provider': 'cloud', 'model': model, 'message': 'cloud reply'}
+
+        async def health_check(self, model: str | None = None) -> dict:
+            return {'configured': True, 'implemented': True, 'reachable': True, 'status': 'ok'}
+
+    client = runtime_env['client']
+    container = runtime_env['container']
+    next_config = container.config.model_copy(
+        update={
+            'provider_stub_mode': False,
+            'default_provider': 'cloud',
+            'capability_model': 'cloud-model',
+        }
+    )
+    container.llm_providers['cloud'] = FakeCloudProvider()
+    container.apply_config(next_config)
+
+    response = client.post('/api/v1/chat/send', json={'text': 'hello', 'image_paths': []})
+    assert response.status_code == 200
+    body = response.json()
+    assert body['status'] == 'completed'
+    assert body['route']['provider'] == 'cloud'
+    assert body['task']['output_payload']['provider_result']['provider'] == 'cloud'

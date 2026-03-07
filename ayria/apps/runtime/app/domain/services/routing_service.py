@@ -16,25 +16,34 @@ class RoutingService:
     def __init__(
         self,
         *,
+        default_provider: str = 'ollama',
         default_chat_model: str = 'qwen3.5:0.8b',
+        vision_provider: str | None = None,
         vision_model: str = 'Qwen2.5-VL-3B',
+        complex_provider: str | None = None,
         complex_model: str = 'qwen3.5:9b',
     ) -> None:
+        self._default_provider = default_provider
         self._default_chat_model = default_chat_model
+        self._vision_provider = vision_provider or default_provider
         self._vision_model = vision_model
+        self._complex_provider = complex_provider or default_provider
         self._complex_model = complex_model
 
     def choose_for_chat(self, *, has_images: bool, current_world_state: WorldState) -> RouteDecision:
+        provider = self._default_provider
         default_model = self._default_chat_model
         if has_images:
+            provider = self._vision_provider
             default_model = self._vision_model
         if current_world_state.current_task_hint and 'complex' in current_world_state.current_task_hint.lower():
+            provider = self._complex_provider
             default_model = self._complex_model
         return RouteDecision(
-            provider='ollama',
+            provider=provider,
             model=default_model,
             use_tools=False,
             use_persona_rewrite=True,
             timeout_seconds=30,
-            reason='local-first chat route with optional multimodal vision input',
+            reason=f'local-first chat route via provider={provider} with optional multimodal vision input',
         )
