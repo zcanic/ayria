@@ -23,8 +23,11 @@ export function ChatPanel() {
   return `
     <section data-region="chat-panel">
       <h2>Chat</h2>
-      <div data-region="messages">No messages yet.</div>
-      <div data-region="composer">Input not wired yet.</div>
+      <div id="chat-messages" data-region="messages">No messages yet.</div>
+      <div data-region="composer">
+        <textarea id="chat-input" rows="4" placeholder="Talk to ayria..."></textarea>
+        <button id="chat-send-button" type="button">Send</button>
+      </div>
     </section>
   `;
 }

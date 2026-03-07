@@ -1,9 +1,18 @@
-"""Desktop snapshot tool placeholder.
+"""Desktop snapshot tool.
 
-This is a logical tool wrapper, not necessarily the OS-specific capture code.
-OS capture may live in Tauri or a platform module; this tool simply normalizes
-its usage inside the runtime.
+This returns normalized snapshot metadata from the current known world state.
+Real OS capture may still live elsewhere, but the runtime now has a truthful
+tool surface for snapshot metadata.
 """
 
-async def get_desktop_snapshot() -> dict:
-    return {'image_path': None}
+from __future__ import annotations
+
+
+async def get_desktop_snapshot(context: dict | None = None) -> dict:
+    context = context or {}
+    active_window = context.get('active_window')
+    recent_screenshot = context.get('recent_screenshot')
+    return {
+        'active_window': active_window,
+        'recent_screenshot': recent_screenshot,
+    }

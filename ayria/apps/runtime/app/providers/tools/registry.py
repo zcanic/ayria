@@ -46,3 +46,9 @@ class ToolRegistry:
                 timeout_seconds=5,
             ),
         ]
+
+    def get_tool(self, tool_name: str) -> ToolSpec | None:
+        for tool in self.list_tools():
+            if tool.name == tool_name:
+                return tool
+        return None

@@ -15,6 +15,18 @@ export type HealthResponse = {
   version?: string;
 };
 
+export type SendChatResponse = {
+  status: 'completed' | 'degraded' | 'failed';
+  inference_mode?: string;
+  assistant_message?: {
+    parts?: Array<{
+      type?: string;
+      text?: string | null;
+    }>;
+  };
+  error?: string;
+};
+
 export type WorldStateSummary = {
   active_window?: {
     app_name?: string;
@@ -44,4 +56,18 @@ export async function getWorldState(): Promise<WorldStateSummary> {
     return {};
   }
   return (await response.json()) as WorldStateSummary;
+}
+
+export async function sendChat(text: string): Promise<SendChatResponse> {
+  const response = await fetch(`${API_BASE}/chat/send`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ text, image_paths: [] }),
+  });
+  if (!response.ok) {
+    return { status: 'failed', error: `http_${response.status}` };
+  }
+  return (await response.json()) as SendChatResponse;
 }

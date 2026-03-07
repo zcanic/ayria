@@ -17,9 +17,9 @@ export function SettingsPage() {
     <section data-region="settings">
       <h2>Settings</h2>
       <ul>
-        <li>Provider: local-first</li>
-        <li>Proactive: disabled (default)</li>
-        <li>Persona intensity: normal</li>
+        <li id="settings-provider">Provider: local-first</li>
+        <li id="settings-proactive">Proactive: unknown</li>
+        <li id="settings-persona">Persona intensity: normal</li>
       </ul>
     </section>
   `;

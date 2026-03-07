@@ -30,6 +30,10 @@ What exists now:
 Default runtime mode is scaffold mode: `provider_stub_mode=true` in runtime config.
 The runtime now includes a real Ollama adapter path for local inference work.
 That live path has been smoke-tested against local `Ollama` using `qwen3.5:0.8b`.
+The runtime now also includes:
+- a real websocket event stream
+- a controlled tool execution route
+- a standardized eval runner with scenario/result schema validation
 Stub mode remains the default so contributors can distinguish clearly between:
 - scaffold behavior
 - truthful provider errors

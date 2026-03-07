@@ -138,18 +138,35 @@ Reasons:
 - all five standardized eval scenarios pass
 - eval results are now more honest and reproducible than before
 
+## Follow-up Fixes Applied
+
+After the initial review pass, additional residual-risk reductions were
+implemented:
+
+1. screenshot analysis is no longer a constant stub and now returns structured
+   heuristic scene classification
+2. runtime now exposes a real websocket event stream at `/api/v1/ws`
+3. desktop shell now connects to the websocket, sends chat input, and renders
+   live world-state and assistant updates
+4. tools are now executable through a controlled route instead of existing only
+   as placeholder metadata
+5. eval artifacts now undergo JSON Schema validation for both scenario input
+   and run-result output
+6. deterministic mock profiles were added so failure-path evals do not depend
+   on accidental machine state
+
 ## Residual Risks
 
 These are real but not blockers for this push:
 
 1. desktop UI remains mostly placeholder UX rather than real feature-complete UI
-2. screenshot analyzer is still stubbed and does not provide meaningful scene understanding
-3. eval runner still uses simple target-path and score logic, not full JSON-schema validation
-4. tool execution and WebSocket/event streaming are still not implemented as production-grade systems
+2. screenshot analyzer is still heuristic and not model-backed scene understanding
+3. eval runner still uses a simple target-path scorer rather than a richer assertion DSL
+4. tool execution and WebSocket/event streaming now exist, but are still not production-grade distributed systems
 
 ## Verification Performed
 
-- `uv run python -m pytest -q` -> `23 passed`
+- `uv run python -m pytest -q` -> `27 passed`
 - `npx tsc --noEmit` -> pass
 - `cargo check` in `apps/desktop/src-tauri` -> pass
 - `uv run python -m app.evals.runner --list` -> pass

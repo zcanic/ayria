@@ -14,9 +14,10 @@ import time
 from pathlib import Path
 
 from app.evals.catalog import list_scenario_paths
-from app.evals.loader import load_fixture, load_scenario, repo_root
+from app.evals.loader import load_fixture, load_scenario
 from app.evals.mock_profiles import apply_mock_profile
 from app.evals.models import EvalRunResult, StepResult
+from app.evals.paths import repo_root
 from app.evals.result_writer import default_result_path, write_result
 from app.evals.runtime_harness import delay_ms, runtime_client, seed_world_state
 from app.evals.scoring import score_rule

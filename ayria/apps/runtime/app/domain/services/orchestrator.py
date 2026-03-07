@@ -35,6 +35,7 @@ from app.domain.services.routing_service import RoutingService
 from app.domain.services.task_service import TaskService
 from app.infra.repositories.message_repo import MessageRepository
 from app.infra.repositories.world_state_repo import WorldStateRepository
+from app.realtime.event_stream import EventStream
 
 
 def _now_iso() -> str:
@@ -53,6 +54,7 @@ class Orchestrator:
         presence_service: PresenceService,
         message_repo: MessageRepository,
         world_state_repo: WorldStateRepository,
+        event_stream: EventStream,
     ) -> None:
         self._task_service = task_service
         self._context_service = context_service
@@ -62,11 +64,14 @@ class Orchestrator:
         self._presence_service = presence_service
         self._message_repo = message_repo
         self._world_state_repo = world_state_repo
+        self._event_stream = event_stream
 
     def _set_presence(self, *, mode: str, user_active: bool) -> None:
-        self._world_state_repo.set_presence(
+        world_state = self._world_state_repo.set_presence(
             self._presence_service.build_presence_state(mode=mode, user_active=user_active)
         )
+        self._event_stream.publish('presence.updated', world_state.presence.model_dump() if world_state.presence else {})
+        self._event_stream.publish('world_state.patched', world_state.model_dump())
 
     def handle_user_message(self, text: str, image_paths: list[str] | None = None) -> dict:
         self._set_presence(mode='chatting', user_active=True)
@@ -101,6 +106,8 @@ class Orchestrator:
                     'reason': 'provider_stub_mode_enabled',
                 },
             )
+            if updated is not None:
+                self._event_stream.publish('task.updated', updated.model_dump())
             self._set_presence(mode='idle', user_active=True)
             return {
                 'status': 'degraded',
@@ -143,6 +150,8 @@ class Orchestrator:
                     'reason': reason,
                 },
             )
+            if updated is not None:
+                self._event_stream.publish('task.updated', updated.model_dump())
             self._set_presence(mode='idle', user_active=True)
             return {
                 'status': 'failed',
@@ -165,6 +174,7 @@ class Orchestrator:
             created_at=_now_iso(),
         )
         self._message_repo.append(assistant_message)
+        self._event_stream.publish('assistant.message.created', assistant_message.model_dump())
 
         updated = self._task_service.update_task(
             task.id,
@@ -180,6 +190,8 @@ class Orchestrator:
                 },
                 },
             )
+        if updated is not None:
+            self._event_stream.publish('task.updated', updated.model_dump())
 
         self._set_presence(mode='idle', user_active=True)
 

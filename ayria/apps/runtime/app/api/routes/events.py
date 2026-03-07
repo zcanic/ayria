@@ -44,6 +44,8 @@ def window_changed(request: WindowChangedRequest) -> dict:
     updated = container.world_state_repo.set_presence(
         container.presence_service.build_presence_state(mode='idle', user_active=True)
     )
+    container.event_stream.publish('presence.updated', updated.presence.model_dump() if updated.presence else {})
+    container.event_stream.publish('world_state.patched', updated.model_dump())
     return {'accepted': True, 'event': 'window.changed', 'payload': request.model_dump(), 'world_state': updated.model_dump()}
 
 
@@ -62,6 +64,8 @@ def screenshot_captured(request: ScreenshotCapturedRequest) -> dict:
         active_window_title=active_window_title,
     )
     if not allowed:
+        current_world_state = container.world_state_repo.get().model_dump()
+        container.event_stream.publish('world_state.patched', current_world_state)
         return {
             'accepted': True,
             'event': 'screenshot.captured',
@@ -70,7 +74,7 @@ def screenshot_captured(request: ScreenshotCapturedRequest) -> dict:
             'policy_reason': reason,
             'analyzed': False,
             'stored': False,
-            'world_state': container.world_state_repo.get().model_dump(),
+            'world_state': current_world_state,
         }
 
     analysis = asyncio.run(container.screenshot_analyzer.analyze(request.image_path))
@@ -82,6 +86,7 @@ def screenshot_captured(request: ScreenshotCapturedRequest) -> dict:
         confidence=float(analysis['confidence']),
     )
     updated = container.world_state_repo.add_screenshot_summary(summary)
+    container.event_stream.publish('world_state.patched', updated.model_dump())
 
     proactive_considered = container.presence_service.should_consider_proactive_message(
         active_app_name=updated.active_window.app_name if updated.active_window else None,

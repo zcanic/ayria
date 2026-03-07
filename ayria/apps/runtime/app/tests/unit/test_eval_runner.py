@@ -1,7 +1,9 @@
 from pathlib import Path
+import json
 
 from app.evals.catalog import list_scenario_paths
 from app.evals.runner import _effective_config_overrides, run_scenario
+from app.evals.schema_validation import validate_run_result_document, validate_scenario_document
 
 
 def test_basic_chat_exact_match_scenario_runs_with_fake_provider(monkeypatch) -> None:
@@ -153,3 +155,12 @@ def test_effective_config_overrides_enforce_runtime_mode() -> None:
         assert 'scenario_runtime_mode_mismatch' in str(error)
     else:
         raise AssertionError('expected runtime-mode mismatch to fail')
+
+
+def test_eval_schema_validation_accepts_standard_scenario_and_result() -> None:
+    scenario_path = Path(__file__).resolve().parents[5] / 'evals/scenarios/stub_mode_truthful_chat/scenario.json'
+    scenario_document = json.loads(scenario_path.read_text())
+    validate_scenario_document(scenario_document)
+
+    result, _ = run_scenario(scenario_path, write_artifacts=False)
+    validate_run_result_document(result.model_dump())

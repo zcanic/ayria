@@ -93,7 +93,7 @@
         "actual": {},
         "expected": {},
         "details": {
-          "type": "string"
+          "type": ["string", "null"]
         }
       }
     },
@@ -113,7 +113,7 @@
           "minimum": 0
         },
         "response_status": {
-          "type": "integer"
+          "type": ["integer", "null"]
         },
         "response_body": {}
       }

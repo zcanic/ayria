@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.evals.loader import evals_root
+from app.evals.paths import evals_root
 from app.evals.models import EvalRunResult
+from app.evals.schema_validation import validate_run_result_document
 
 
 def write_result(result: EvalRunResult) -> tuple[Path, Path]:
@@ -13,6 +14,8 @@ def write_result(result: EvalRunResult) -> tuple[Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = f'{result.started_at.replace(":", "-")}__{result.git_commit}'
     out_path = out_dir / f'{stem}.json'
+    payload = result.model_dump()
+    validate_run_result_document(payload)
     out_path.write_text(result.model_dump_json(indent=2))
     md_path = out_dir / f'{stem}.md'
     md_path.write_text(_markdown_summary(result, out_path))

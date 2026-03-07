@@ -15,6 +15,7 @@ export function PresenceBadge() {
     <section data-region="presence-badge">
       <strong>Presence</strong>
       <div id="presence-status">Mode: idle</div>
+      <div id="runtime-health">Runtime: unknown</div>
     </section>
   `;
 }
