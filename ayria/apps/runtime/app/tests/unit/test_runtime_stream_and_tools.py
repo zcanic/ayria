@@ -1,10 +1,11 @@
-from pathlib import Path
 import asyncio
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 import pytest
 
 from app.main import app
+from app.domain.models.tool import ToolSpec
 from app.providers.vision.screenshot_analyzer import ScreenshotAnalyzer
 from app.realtime.event_stream import EventStream
 from app.runtime_container import RuntimeContainer
@@ -38,7 +39,9 @@ def runtime_env(monkeypatch: pytest.MonkeyPatch) -> dict:
     monkeypatch.setattr(world_state_route, 'container', test_container)
     monkeypatch.setattr(ws_route, 'container', test_container)
 
-    return {'client': TestClient(app), 'container': test_container}
+    client = TestClient(app)
+    client.headers.update({'X-Ayria-Token': test_container.config.runtime_api_token})
+    return {'client': client, 'container': test_container}
 
 
 def _apply_runtime_overrides(container: RuntimeContainer, *, config_updates: dict | None = None, provider_overrides: dict | None = None) -> None:
@@ -74,7 +77,8 @@ def _receive_until_types(websocket, expected_types: set[str], *, max_events: int
 
 def test_websocket_receives_world_state_patch(runtime_env: dict) -> None:
     client = runtime_env['client']
-    with client.websocket_connect('/api/v1/ws') as websocket:
+    token = runtime_env['container'].config.runtime_api_token
+    with client.websocket_connect(f'/api/v1/ws?token={token}') as websocket:
         ready = websocket.receive_json()
         assert ready['type'] == 'connection.ready'
         assert ready['source'] == 'runtime'
@@ -97,6 +101,10 @@ def test_tools_inventory_and_confirmation_rule(runtime_env: dict, tmp_path: Path
     names = {item['name'] for item in inventory['items']}
     assert 'read_file' in names
     assert 'web_search' in names
+    assert 'list_directory' in names
+    assert 'grep_workspace' in names
+    assert all(item['destructive'] is False for item in inventory['items'])
+    assert all(item['companion_safe'] is True for item in inventory['items'])
 
     sample = tmp_path / 'note.txt'
     sample.write_text('hello from file')
@@ -104,8 +112,22 @@ def test_tools_inventory_and_confirmation_rule(runtime_env: dict, tmp_path: Path
     approval_required = client.post('/api/v1/tools/execute', json={'tool_name': 'read_file', 'input_payload': {'path': str(sample)}})
     assert approval_required.status_code == 200
     assert approval_required.json()['status'] == 'awaiting_approval'
+    assert approval_required.json()['response_mode'] == 'ask_permission'
     assert approval_required.json()['task']['status'] == 'awaiting_user'
     assert approval_required.json()['task']['input_payload']['tool_name'] == 'read_file'
+
+    list_dir_approval = client.post('/api/v1/tools/execute', json={'tool_name': 'list_directory', 'input_payload': {'path': str(tmp_path)}})
+    assert list_dir_approval.status_code == 200
+    assert list_dir_approval.json()['status'] == 'awaiting_approval'
+    assert list_dir_approval.json()['task']['input_payload']['tool_name'] == 'list_directory'
+
+    grep_approval = client.post(
+        '/api/v1/tools/execute',
+        json={'tool_name': 'grep_workspace', 'input_payload': {'root_path': str(tmp_path), 'query': 'hello from file'}},
+    )
+    assert grep_approval.status_code == 200
+    assert grep_approval.json()['status'] == 'awaiting_approval'
+    assert grep_approval.json()['task']['input_payload']['tool_name'] == 'grep_workspace'
 
     allowed = client.post(
         '/api/v1/tools/execute',
@@ -114,13 +136,25 @@ def test_tools_inventory_and_confirmation_rule(runtime_env: dict, tmp_path: Path
     assert allowed.status_code == 200
     assert allowed.json()['result']['content'] == 'hello from file'
 
+    listed = client.post('/api/v1/tools/execute', json={'tool_name': 'list_directory', 'input_payload': {'path': str(tmp_path)}, 'confirmed': True})
+    assert listed.status_code == 200
+    assert any(item['name'] == 'note.txt' for item in listed.json()['result']['items'])
+
+    grep = client.post(
+        '/api/v1/tools/execute',
+        json={'tool_name': 'grep_workspace', 'input_payload': {'root_path': str(tmp_path), 'query': 'hello from file'}, 'confirmed': True},
+    )
+    assert grep.status_code == 200
+    assert grep.json()['result']['results'][0]['path'].endswith('note.txt')
+
 
 def test_tool_result_event_is_sanitized(runtime_env: dict, tmp_path: Path) -> None:
     client = runtime_env['client']
     sample = tmp_path / 'secret.txt'
     sample.write_text('very secret content')
 
-    with client.websocket_connect('/api/v1/ws') as websocket:
+    token = runtime_env['container'].config.runtime_api_token
+    with client.websocket_connect(f'/api/v1/ws?token={token}') as websocket:
         websocket.receive_json()
         response = client.post(
             '/api/v1/tools/execute',
@@ -139,20 +173,51 @@ def test_tool_result_event_is_sanitized(runtime_env: dict, tmp_path: Path) -> No
     assert audit_logs[0]['decision'] == 'allowed'
 
 
+def test_destructive_tool_is_rejected_even_if_registered(runtime_env: dict) -> None:
+    container = runtime_env['container']
+
+    destructive_tool = ToolSpec(
+        name='delete_file',
+        description='Delete a local file',
+        input_schema={'type': 'object', 'properties': {'path': {'type': 'string'}}, 'required': ['path']},
+        requires_confirmation=False,
+        permission_level='action',
+        data_sensitivity='high',
+        operation_kind='destructive_write',
+        destructive=True,
+        companion_safe=False,
+    )
+
+    original_get_tool = container.tool_service._registry.get_tool
+    container.tool_service._registry.get_tool = lambda tool_name: destructive_tool if tool_name == 'delete_file' else original_get_tool(tool_name)  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match='tool_disallowed:destructive_or_unsafe:delete_file'):
+        asyncio.run(
+            container.tool_service.execute(
+                tool_name='delete_file',
+                input_payload={'path': '/tmp/a.txt'},
+                confirmed=True,
+            )
+        )
+
+
 def test_sensitive_tool_requests_approval_and_emits_permission_event(runtime_env: dict, tmp_path: Path) -> None:
     client = runtime_env['client']
     sample = tmp_path / 'secret.txt'
     sample.write_text('very secret content')
 
-    with client.websocket_connect('/api/v1/ws') as websocket:
+    token = runtime_env['container'].config.runtime_api_token
+    with client.websocket_connect(f'/api/v1/ws?token={token}') as websocket:
         websocket.receive_json()
         response = client.post('/api/v1/tools/execute', json={'tool_name': 'read_file', 'input_payload': {'path': str(sample)}})
         assert response.status_code == 200
         body = response.json()
         assert body['status'] == 'awaiting_approval'
+        assert body['response_mode'] == 'ask_permission'
         received = _receive_until_types(websocket, {'permission.requested', 'task.updated'}, max_events=6)
         permission_event = next(event for event in received if event['type'] == 'permission.requested')
         assert permission_event['payload']['tool_name'] == 'read_file'
+        assert permission_event['payload']['response_mode'] == 'ask_permission'
 
     task_id = body['task']['id']
     listed = client.get('/api/v1/tasks').json()['items']
@@ -171,7 +236,8 @@ def test_task_decision_approve_executes_tool_and_completes_task(runtime_env: dic
     approval = client.post('/api/v1/tools/execute', json={'tool_name': 'read_file', 'input_payload': {'path': str(sample)}})
     task_id = approval.json()['task']['id']
 
-    with client.websocket_connect('/api/v1/ws') as websocket:
+    token = runtime_env['container'].config.runtime_api_token
+    with client.websocket_connect(f'/api/v1/ws?token={token}') as websocket:
         websocket.receive_json()
         response = client.post(f'/api/v1/tasks/{task_id}/decision', json={'approve': True})
         assert response.status_code == 200
@@ -203,10 +269,33 @@ def test_task_decision_reject_cancels_task(runtime_env: dict, tmp_path: Path) ->
     assert response.status_code == 200
     body = response.json()
     assert body['status'] == 'rejected'
+    assert body['task']['output_payload']['response_mode'] == 'ask_permission'
     assert body['task']['status'] == 'cancelled'
 
     audit_logs = client.get('/api/v1/audit/logs').json()['items']
     assert audit_logs[0]['decision'] == 'rejected'
+
+
+def test_task_decision_revalidates_current_policy(runtime_env: dict, tmp_path: Path) -> None:
+    client = runtime_env['client']
+    container = runtime_env['container']
+    sample = tmp_path / 'secrets.txt'
+    sample.write_text('ship it')
+
+    approval = client.post('/api/v1/tools/execute', json={'tool_name': 'read_file', 'input_payload': {'path': str(sample)}})
+    task_id = approval.json()['task']['id']
+
+    updated_config = container.config.model_copy(update={'permission_sensitive_read_policy': 'deny'})
+    container.apply_config(updated_config)
+
+    response = client.post(f'/api/v1/tasks/{task_id}/decision', json={'approve': True})
+    assert response.status_code == 200
+    body = response.json()
+    assert body['status'] == 'denied_by_policy'
+    assert body['response_mode'] == 'ask_permission'
+    assert body['reason'] == 'policy_denied:sensitive_read'
+    assert body['task']['status'] == 'cancelled'
+    assert body['task']['output_payload']['decision'] == 'denied_by_current_policy'
 
 
 def test_window_changed_can_emit_proactive_message(runtime_env: dict) -> None:
@@ -217,7 +306,8 @@ def test_window_changed_can_emit_proactive_message(runtime_env: dict) -> None:
         config_updates={'proactive_enabled': True, 'proactive_mode': 'active', 'proactive_cooldown_seconds': 1},
     )
 
-    with client.websocket_connect('/api/v1/ws') as websocket:
+    token = runtime_env['container'].config.runtime_api_token
+    with client.websocket_connect(f'/api/v1/ws?token={token}') as websocket:
         websocket.receive_json()
         response = client.post('/api/v1/events/window-changed', json={'app_name': 'Cursor', 'window_title': 'main.py', 'url': None})
         assert response.status_code == 200
@@ -232,7 +322,8 @@ def test_window_changed_can_emit_proactive_message(runtime_env: dict) -> None:
 
 def test_config_update_publishes_config_updated_event(runtime_env: dict) -> None:
     client = runtime_env['client']
-    with client.websocket_connect('/api/v1/ws') as websocket:
+    token = runtime_env['container'].config.runtime_api_token
+    with client.websocket_connect(f'/api/v1/ws?token={token}') as websocket:
         websocket.receive_json()
         response = client.put('/api/v1/config', json={'persona_intensity': 'low'})
         assert response.status_code == 200
@@ -311,6 +402,53 @@ def test_screenshot_analyzer_uses_model_backed_path_when_available(runtime_env: 
     assert result['provider'] == 'ollama'
 
 
+def test_screenshot_analyzer_times_out_to_heuristic_fallback(runtime_env: dict, tmp_path: Path) -> None:
+    class FakeSlowVisionProvider:
+        implemented = True
+        provider_id = 'ollama'
+        supports_images = True
+
+        def normalize_model_name(self, model: str) -> str:
+            return model
+
+        async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+            await asyncio.sleep(0.2)
+            return {
+                'provider': 'ollama',
+                'model': model,
+                'message': 'slow output',
+            }
+
+        async def health_check(self, model: str | None = None) -> dict:
+            return {
+                'configured': True,
+                'implemented': True,
+                'reachable': True,
+                'status': 'ok',
+                'supports_images': True,
+            }
+
+    image_path = tmp_path / 'browser-shot.png'
+    image_path.write_bytes(b'\x89PNG\r\n\x1a\nfakepngdata')
+
+    container = runtime_env['container']
+    _apply_runtime_overrides(
+        container,
+        config_updates={'provider_stub_mode': False},
+        provider_overrides={'ollama': FakeSlowVisionProvider()},
+    )
+    analyzer = ScreenshotAnalyzer(
+        model_execution_service=container.model_execution_service,
+        provider_name='ollama',
+        model='qwen3.5:0.8b',
+        provider_timeout_seconds=0.01,
+    )
+
+    result = asyncio.run(analyzer.analyze(str(image_path)))
+    assert result['analysis_mode'] == 'heuristic_fallback'
+    assert str(result.get('analysis_fallback_reason', '')).startswith('TimeoutError:')
+
+
 def test_presence_state_includes_reason_and_focus(runtime_env: dict) -> None:
     client = runtime_env['client']
     response = client.post('/api/v1/events/window-changed', json={'app_name': 'Cursor', 'window_title': 'main.py', 'url': None})
@@ -318,3 +456,17 @@ def test_presence_state_includes_reason_and_focus(runtime_env: dict) -> None:
     presence = response.json()['world_state']['presence']
     assert presence['reason'] == 'window_context_updated'
     assert presence['focus_label'] == 'Cursor / main.py'
+
+
+def test_sensitive_routes_reject_missing_runtime_token(runtime_env: dict) -> None:
+    unauth_client = TestClient(app)
+    response = unauth_client.get('/api/v1/world-state')
+    assert response.status_code == 401
+    assert response.json()['detail'] == 'runtime_auth_required'
+
+
+def test_websocket_rejects_missing_runtime_token(runtime_env: dict) -> None:
+    unauth_client = TestClient(app)
+    with pytest.raises(Exception):
+        with unauth_client.websocket_connect('/api/v1/ws') as websocket:
+            websocket.receive_json()

@@ -8,6 +8,8 @@ still remain reproducible.
 
 from __future__ import annotations
 
+import asyncio
+import os
 import re
 from pathlib import Path
 
@@ -21,22 +23,31 @@ class ScreenshotAnalyzer:
         model_execution_service: ModelExecutionService | None = None,
         provider_name: str = 'ollama',
         model: str = 'qwen3.5:0.8b',
+        provider_timeout_seconds: float | None = None,
     ) -> None:
         self._model_execution_service = model_execution_service
         self._provider_name = provider_name
         self._model = model
+        self._provider_timeout_seconds = (
+            provider_timeout_seconds
+            if provider_timeout_seconds is not None
+            else float(os.getenv('AYRIA_SCREENSHOT_ANALYSIS_TIMEOUT_SECONDS', '25'))
+        )
 
-    async def analyze(self, image_path: str) -> dict:
+    async def analyze(self, image_path: str) -> dict[str, object]:
         if self._model_execution_service is not None and not self._model_execution_service.provider_stub_mode:
             try:
-                provider_result = await self._model_execution_service.run_chat(
-                    provider_name=self._provider_name,
-                    model=self._model,
-                    text=(
-                        'Describe this screenshot for desktop-assistant context. '
-                        'State the likely scene type, notable UI elements, and the likely user goal.'
+                provider_result = await asyncio.wait_for(
+                    self._model_execution_service.run_chat(
+                        provider_name=self._provider_name,
+                        model=self._model,
+                        text=(
+                            'Describe this screenshot for desktop-assistant context. '
+                            'State the likely scene type, notable UI elements, and the likely user goal.'
+                        ),
+                        image_paths=[image_path],
                     ),
-                    image_paths=[image_path],
+                    timeout=self._provider_timeout_seconds,
                 )
                 raw_summary = str(provider_result.get('message', '')).strip()
                 if raw_summary:
@@ -46,14 +57,17 @@ class ScreenshotAnalyzer:
                     structured['provider'] = provider_result.get('provider')
                     structured['model'] = provider_result.get('model')
                     return structured
-            except Exception:
-                pass
+            except Exception as error:
+                heuristic = self._heuristic_analyze(image_path)
+                heuristic['analysis_mode'] = 'heuristic_fallback'
+                heuristic['analysis_fallback_reason'] = f'{type(error).__name__}:{str(error).strip() or repr(error)}'
+                return heuristic
 
         heuristic = self._heuristic_analyze(image_path)
         heuristic['analysis_mode'] = 'heuristic_fallback'
         return heuristic
 
-    def _classify_from_text(self, text: str) -> dict:
+    def _classify_from_text(self, text: str) -> dict[str, object]:
         lowered = text.lower()
         scene_type = 'unknown'
         confidence = 0.82
@@ -96,7 +110,7 @@ class ScreenshotAnalyzer:
             'confidence': confidence,
         }
 
-    def _heuristic_analyze(self, image_path: str) -> dict:
+    def _heuristic_analyze(self, image_path: str) -> dict[str, object]:
         path = Path(image_path)
         text = f'{path.name} {" ".join(path.parts)}'.lower()
 

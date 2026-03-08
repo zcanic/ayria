@@ -11,10 +11,12 @@ Implementation notes:
 - Do not decide proactive behavior in the route layer.
 """
 
+from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel
 import asyncio
 import time
+from typing import Literal, cast
 from app.domain.models.world_state import ActiveWindow, ScreenshotSummary
 from app.runtime_container import container
 from datetime import datetime, timezone
@@ -26,18 +28,25 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _maybe_emit_proactive_message(*, world_state, trigger: str) -> dict | None:
-    proactive_considered = container.presence_service.should_consider_proactive_message(
-        active_app_name=world_state.active_window.app_name if world_state.active_window else None,
-        user_is_actively_typing=False,
+def _validate_screenshot_path(image_path: str) -> tuple[bool, str, Path | None]:
+    path = Path(image_path).expanduser()
+    if not path.is_absolute():
+        path = path.resolve()
+    if not path.exists() or not path.is_file():
+        return False, 'missing_file', None
+    if path.suffix.lower() not in {'.png', '.jpg', '.jpeg', '.webp'}:
+        return False, 'unsupported_image_type', None
+    return True, 'trusted_local_file', path
+
+
+def _maybe_emit_proactive_message(*, world_state, trigger: str) -> dict[str, object] | None:
+    decision = container.runtime_policy_service.decide_proactive_observation(
+        world_state=world_state,
         observation_confidence=0.85,
+        user_is_actively_typing=False,
         now_ts=time.time(),
     )
-    if not proactive_considered:
-        return None
-
-    suggestion = container.proactive_service.suggest_for_world_state(world_state)
-    if not suggestion:
+    if not decision.allowed or not decision.suggestion:
         return None
 
     task = container.task_service.create_task(
@@ -47,7 +56,7 @@ def _maybe_emit_proactive_message(*, world_state, trigger: str) -> dict | None:
     )
     message = container.proactive_service.build_message(
         message_id=f'proactive_{task.id}',
-        text=suggestion,
+        text=decision.suggestion,
         created_at=_now_iso(),
     )
     container.message_repo.append(message)
@@ -69,8 +78,8 @@ def _maybe_emit_proactive_message(*, world_state, trigger: str) -> dict | None:
         category='proactive',
         action='assistant.proactive.suggested',
         decision='emitted',
-        summary=suggestion,
-        metadata={'task_id': task.id, 'trigger': trigger},
+        summary=decision.suggestion,
+        metadata={'task_id': task.id, 'trigger': trigger, 'response_mode': decision.response_mode},
     )
     container.event_stream.publish('assistant.proactive.suggested', message.model_dump())
     container.event_stream.publish('assistant.message.created', message.model_dump())
@@ -92,7 +101,7 @@ class ScreenshotCapturedRequest(BaseModel):
 
 
 @router.post('/window-changed')
-def window_changed(request: WindowChangedRequest) -> dict:
+def window_changed(request: WindowChangedRequest) -> dict[str, object]:
     updated = container.world_state_repo.update_active_window(
         ActiveWindow(
             app_name=request.app_name,
@@ -113,7 +122,7 @@ def window_changed(request: WindowChangedRequest) -> dict:
 
 
 @router.post('/screenshot-captured')
-def screenshot_captured(request: ScreenshotCapturedRequest) -> dict:
+def screenshot_captured(request: ScreenshotCapturedRequest) -> dict[str, object]:
     current_world_state = container.world_state_repo.get()
     current_window = current_world_state.active_window
     container.world_state_repo.set_presence(
@@ -140,18 +149,46 @@ def screenshot_captured(request: ScreenshotCapturedRequest) -> dict:
             'payload': request.model_dump(),
             'policy_blocked': True,
             'policy_reason': reason,
+            'provenance_valid': False,
+            'provenance_reason': 'policy_blocked',
             'analyzed': False,
             'stored': False,
             'world_state': current_world_state,
         }
 
-    analysis = asyncio.run(container.screenshot_analyzer.analyze(request.image_path))
+    provenance_valid, provenance_reason, validated_path = _validate_screenshot_path(request.image_path)
+    if not provenance_valid or validated_path is None:
+        current_world_state = container.world_state_repo.get().model_dump()
+        container.event_stream.publish('world_state.patched', current_world_state)
+        return {
+            'accepted': True,
+            'event': 'screenshot.captured',
+            'payload': request.model_dump(),
+            'policy_blocked': False,
+            'policy_reason': 'allowed',
+            'provenance_valid': False,
+            'provenance_reason': provenance_reason,
+            'analyzed': False,
+            'stored': False,
+            'world_state': current_world_state,
+        }
+
+    analysis = asyncio.run(container.screenshot_analyzer.analyze(str(validated_path)))
+    analysis_summary = str(analysis.get('summary', '')).strip() or 'screenshot analyzed'
+    raw_entities = analysis.get('detected_entities')
+    detected_entities = [str(item) for item in raw_entities] if isinstance(raw_entities, list) else []
+    scene_type_value = str(analysis.get('scene_type', 'unknown')).strip() or 'unknown'
+    if scene_type_value not in {'code', 'browser', 'document', 'chat', 'image', 'desktop', 'unknown'}:
+        scene_type_value = 'unknown'
+    scene_type = cast(Literal['code', 'browser', 'document', 'chat', 'image', 'desktop', 'unknown'], scene_type_value)
+    confidence_value = analysis.get('confidence', 0.0)
+    confidence = float(confidence_value) if isinstance(confidence_value, (int, float, str)) else 0.0
     summary = ScreenshotSummary(
-        image_id=request.image_path,
-        summary=analysis['summary'],
-        detected_entities=analysis['detected_entities'],
-        scene_type=analysis['scene_type'],
-        confidence=float(analysis['confidence']),
+        image_id=str(validated_path),
+        summary=analysis_summary,
+        detected_entities=detected_entities,
+        scene_type=scene_type,
+        confidence=confidence,
         analysis_mode=str(analysis.get('analysis_mode')) if analysis.get('analysis_mode') is not None else None,
         analysis_provider=str(analysis.get('provider')) if analysis.get('provider') is not None else None,
         analysis_model=str(analysis.get('model')) if analysis.get('model') is not None else None,
@@ -168,8 +205,11 @@ def screenshot_captured(request: ScreenshotCapturedRequest) -> dict:
         'event': 'screenshot.captured',
         'payload': request.model_dump(),
         'screenshot_summary': summary.model_dump(),
+        'analysis_fallback_reason': analysis.get('analysis_fallback_reason'),
         'policy_blocked': False,
         'policy_reason': 'allowed',
+        'provenance_valid': True,
+        'provenance_reason': provenance_reason,
         'analyzed': True,
         'stored': True,
         'eligible_for_proactive': proactive_considered,
