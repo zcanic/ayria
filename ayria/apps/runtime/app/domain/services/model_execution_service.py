@@ -6,11 +6,10 @@ from pathlib import Path
 
 from app.providers.llm.base import LLMProvider
 
-
 class ModelExecutionService:
     def __init__(self, provider_stub_mode: bool, providers: dict[str, LLMProvider]) -> None:
         self._provider_stub_mode = provider_stub_mode
-        self._providers = providers
+        self._providers: dict[str, LLMProvider] = providers
 
     @property
     def provider_stub_mode(self) -> bool:
@@ -36,7 +35,7 @@ class ModelExecutionService:
         except Exception as error:
             raise RuntimeError(f'image_read_failed:{image_path}:{error}') from error
 
-    async def _build_messages(self, *, text: str, image_paths: list[str] | None) -> list[dict]:
+    async def _build_messages(self, *, text: str, image_paths: list[str] | None) -> list[dict[str, object]]:
         message: dict[str, object] = {'role': 'user', 'content': text}
         if image_paths:
             message['images'] = [await self._encode_image(path) for path in image_paths]
@@ -49,7 +48,8 @@ class ModelExecutionService:
         model: str,
         text: str,
         image_paths: list[str] | None = None,
-    ) -> dict:
+        tools: list[dict[str, object]] | None = None,
+    ) -> dict[str, object]:
         provider = self._resolve_provider(provider_name)
         resolved_model = model
         normalize_model_name = getattr(provider, 'normalize_model_name', None)
@@ -71,9 +71,9 @@ class ModelExecutionService:
             raise RuntimeError(f'provider_health_not_ok:{provider_name}:{health_status}')
 
         messages = await self._build_messages(text=text, image_paths=image_paths)
-        return await provider.chat(messages=messages, model=resolved_model, tools=None)
+        return await provider.chat(messages=messages, model=resolved_model, tools=tools)
 
-    async def check_provider_health(self, *, provider_name: str, model: str | None) -> dict:
+    async def check_provider_health(self, *, provider_name: str, model: str | None) -> dict[str, object]:
         provider = self._providers.get(provider_name)
         if provider is None:
             return {
@@ -94,5 +94,5 @@ class ModelExecutionService:
                 'implemented': bool(getattr(provider, 'implemented', False)),
                 'supports_images': bool(getattr(provider, 'supports_images', False)),
                 'reachable': False,
-                'status': f'error:{error}',
+                'status': f'error:{type(error).__name__}:{error}',
             }

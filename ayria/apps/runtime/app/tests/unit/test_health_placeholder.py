@@ -1,7 +1,9 @@
 from fastapi.testclient import TestClient
 import pytest
 import asyncio
+from pathlib import Path
 
+from app.domain.models.world_state import ActiveWindow
 from app.domain.services.presence_service import PresenceService
 from app.main import app
 from app.runtime_container import RuntimeContainer
@@ -29,7 +31,9 @@ def runtime_env(monkeypatch: pytest.MonkeyPatch) -> dict:
     monkeypatch.setattr(tasks_route, 'container', test_container)
     monkeypatch.setattr(world_state_route, 'container', test_container)
 
-    return {'client': TestClient(app), 'container': test_container}
+    client = TestClient(app)
+    client.headers.update({'X-Ayria-Token': test_container.config.runtime_api_token})
+    return {'client': client, 'container': test_container}
 
 
 @pytest.fixture
@@ -59,6 +63,7 @@ def test_chat_send_in_stub_mode_is_truthful(runtime_client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body['status'] == 'degraded'
+    assert body['response_mode'] == 'respond_now'
     assert body['execution_mode'] == 'synchronous'
     assert body['inference_mode'] == 'stub'
     assert body['provider_call_occurred'] is False
@@ -234,9 +239,181 @@ def test_chat_send_live_mode_with_real_provider_path_is_completed(runtime_env: d
     assert response.status_code == 200
     body = response.json()
     assert body['status'] == 'completed'
+    assert body['response_mode'] == 'respond_now'
     assert body['execution_mode'] == 'synchronous'
     assert body['provider_call_occurred'] is True
     assert body['assistant_message']['parts'][0]['text'] == 'real reply'
+
+
+def test_chat_model_tool_call_requires_approval_and_decision_resumes_chat(runtime_env: dict, tmp_path: Path) -> None:
+    sample = tmp_path / 'tool-note.txt'
+    sample.write_text('tool content from disk')
+
+    class FakeToolCallingProvider:
+        implemented = True
+        provider_id = 'ollama'
+        calls = 0
+
+        async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+            FakeToolCallingProvider.calls += 1
+            if FakeToolCallingProvider.calls == 1:
+                assert isinstance(tools, list)
+                assert any(item.get('function', {}).get('name') == 'read_file' for item in tools)
+                return {
+                    'provider': 'ollama',
+                    'model': model,
+                    'message': '',
+                    'tools_used': [
+                        {
+                            'function': {
+                                'name': 'read_file',
+                                'arguments': {'path': str(sample)},
+                            }
+                        }
+                    ],
+                }
+
+            assert 'Tool execution result for read_file' in messages[0]['content']
+            assert 'tool content from disk' in messages[0]['content']
+            return {'provider': 'ollama', 'model': model, 'message': 'final answer after approval'}
+
+        async def health_check(self, model: str | None = None) -> dict:
+            return {'configured': True, 'implemented': True, 'reachable': True, 'status': 'ok'}
+
+    client = runtime_env['client']
+    container = runtime_env['container']
+    _apply_runtime_overrides(
+        container,
+        config_updates={'provider_stub_mode': False},
+        provider_overrides={'ollama': FakeToolCallingProvider()},
+    )
+
+    send = client.post('/api/v1/chat/send', json={'text': 'read that file and summarize', 'image_paths': []})
+    assert send.status_code == 200
+    send_body = send.json()
+    assert send_body['status'] == 'awaiting_approval'
+    assert send_body['task']['status'] == 'awaiting_user'
+    approval_task = send_body['approval_task']
+    assert approval_task['status'] == 'awaiting_user'
+    assert approval_task['input_payload']['tool_name'] == 'read_file'
+    assert approval_task['input_payload']['parent_chat_task_id'] == send_body['task']['id']
+
+    decision = client.post(f"/api/v1/tasks/{approval_task['id']}/decision", json={'approve': True})
+    assert decision.status_code == 200
+    decision_body = decision.json()
+    assert decision_body['status'] == 'completed'
+    assert decision_body['chat_response']['status'] == 'completed'
+    assert decision_body['chat_response']['assistant_message']['parts'][0]['text'] == 'final answer after approval'
+
+    chat_task = client.get(f"/api/v1/tasks/{send_body['task']['id']}").json()
+    assert chat_task['status'] == 'completed'
+
+
+def test_chat_continuation_truncates_large_tool_result_for_followup(runtime_env: dict, tmp_path: Path) -> None:
+    sample = tmp_path / 'large-tool-note.txt'
+    sample.write_text('X' * 5000)
+
+    class FakeToolCallingProvider:
+        implemented = True
+        provider_id = 'ollama'
+        calls = 0
+
+        async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+            FakeToolCallingProvider.calls += 1
+            if FakeToolCallingProvider.calls == 1:
+                return {
+                    'provider': 'ollama',
+                    'model': model,
+                    'message': '',
+                    'tools_used': [
+                        {
+                            'function': {
+                                'name': 'read_file',
+                                'arguments': {'path': str(sample)},
+                            }
+                        }
+                    ],
+                }
+
+            content = messages[0]['content']
+            assert 'tool_result_too_large_for_followup_prompt' in content
+            assert '"truncated": true' in content.lower()
+            return {'provider': 'ollama', 'model': model, 'message': 'ok after truncation'}
+
+        async def health_check(self, model: str | None = None) -> dict:
+            return {'configured': True, 'implemented': True, 'reachable': True, 'status': 'ok'}
+
+    client = runtime_env['client']
+    container = runtime_env['container']
+    _apply_runtime_overrides(
+        container,
+        config_updates={'provider_stub_mode': False},
+        provider_overrides={'ollama': FakeToolCallingProvider()},
+    )
+
+    send = client.post('/api/v1/chat/send', json={'text': 'read the file and answer', 'image_paths': []})
+    assert send.status_code == 200
+    send_body = send.json()
+    assert send_body['status'] == 'awaiting_approval'
+
+    approval_task_id = send_body['approval_task']['id']
+    decision = client.post(f'/api/v1/tasks/{approval_task_id}/decision', json={'approve': True})
+    assert decision.status_code == 200
+    decision_body = decision.json()
+    assert decision_body['status'] == 'completed'
+    assert decision_body['chat_response']['status'] == 'completed'
+    assert decision_body['chat_response']['assistant_message']['parts'][0]['text'] == 'ok after truncation'
+
+
+def test_chat_model_tool_call_without_approval_executes_inline(runtime_env: dict) -> None:
+    class FakeInlineToolProvider:
+        implemented = True
+        provider_id = 'ollama'
+        calls = 0
+
+        async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+            FakeInlineToolProvider.calls += 1
+            if FakeInlineToolProvider.calls == 1:
+                assert isinstance(tools, list)
+                assert any(item.get('function', {}).get('name') == 'memory_lookup' for item in tools)
+                return {
+                    'provider': 'ollama',
+                    'model': model,
+                    'message': '',
+                    'tools_used': [
+                        {
+                            'function': {
+                                'name': 'memory_lookup',
+                                'arguments': {'query': 'roadmap'},
+                            }
+                        }
+                    ],
+                }
+
+            assert 'Tool execution result for memory_lookup' in messages[0]['content']
+            return {'provider': 'ollama', 'model': model, 'message': 'inline tool completed'}
+
+        async def health_check(self, model: str | None = None) -> dict:
+            return {'configured': True, 'implemented': True, 'reachable': True, 'status': 'ok'}
+
+    client = runtime_env['client']
+    container = runtime_env['container']
+    _apply_runtime_overrides(
+        container,
+        config_updates={'provider_stub_mode': False},
+        provider_overrides={'ollama': FakeInlineToolProvider()},
+    )
+
+    response = client.post('/api/v1/chat/send', json={'text': 'check memory then answer', 'image_paths': []})
+    assert response.status_code == 200
+    body = response.json()
+    assert body['status'] == 'completed'
+    assert body['assistant_message']['parts'][0]['text'] == 'inline tool completed'
+
+    tasks = client.get('/api/v1/tasks').json()['items']
+    tool_tasks = [item for item in tasks if item['type'] == 'tool_call']
+    assert len(tool_tasks) >= 1
+    assert tool_tasks[0]['status'] == 'completed'
 
 
 def test_chat_send_live_mode_with_images_passes_multimodal_payload(runtime_env: dict, tmp_path) -> None:
@@ -296,15 +473,170 @@ def test_window_changed_updates_world_state(runtime_client: TestClient) -> None:
     assert body['world_state']['presence']['mode'] == 'idle'
 
 
-def test_screenshot_ingestion_allowed_path(runtime_client: TestClient) -> None:
+def test_presence_service_marks_blacklisted_context_as_protected() -> None:
+    service = PresenceService(
+        proactive_enabled=True,
+        blacklisted_apps=['SecretsApp'],
+        blocked_scene_types=['auth', 'payment', 'credential'],
+    )
+    protected, reason = service.is_context_protected(active_app_name='SecretsApp', active_window_title='vault')
+    assert protected is True
+    assert reason == 'blacklisted_app'
+
+    sanitized = service.sanitize_active_window_for_model(active_app_name='SecretsApp', active_window_title='vault')
+    assert sanitized['visible'] is False
+    assert sanitized['window_title'] is None
+
+
+def test_chat_context_redacts_protected_active_window(runtime_env: dict) -> None:
+    class RecordingProvider:
+        implemented = True
+        provider_id = 'ollama'
+        seen_text: str | None = None
+
+        async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+            RecordingProvider.seen_text = messages[0]['content']
+            return {'provider': 'ollama', 'model': model, 'message': 'safe reply'}
+
+        async def health_check(self, model: str | None = None) -> dict:
+            return {'configured': True, 'implemented': True, 'reachable': True, 'status': 'ok'}
+
+    client = runtime_env['client']
+    container = runtime_env['container']
+    _apply_runtime_overrides(
+        container,
+        config_updates={'provider_stub_mode': False, 'blacklisted_apps': ['SecretsApp']},
+        provider_overrides={'ollama': RecordingProvider()},
+    )
+
+    client.post('/api/v1/events/window-changed', json={'app_name': 'SecretsApp', 'window_title': 'vault', 'url': None})
+    response = client.post('/api/v1/chat/send', json={'text': 'hello', 'image_paths': []})
+    assert response.status_code == 200
+    body = response.json()
+    assert body['status'] == 'completed'
+    assert body['context_exposure']['active_window']['visible'] is False
+    assert body['context_exposure']['active_window']['reason'] == 'blacklisted_app'
+    assert RecordingProvider.seen_text is not None
+    assert 'Current active window:' not in RecordingProvider.seen_text
+    assert 'vault' not in RecordingProvider.seen_text
+
+
+def test_chat_context_includes_recent_screenshot_summary(runtime_env: dict, tmp_path) -> None:
+    class RecordingProvider:
+        implemented = True
+        provider_id = 'ollama'
+        seen_text: str | None = None
+
+        async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+            RecordingProvider.seen_text = messages[0]['content']
+            return {'provider': 'ollama', 'model': model, 'message': 'context-aware reply'}
+
+        async def health_check(self, model: str | None = None) -> dict:
+            return {'configured': True, 'implemented': True, 'reachable': True, 'status': 'ok'}
+
+    image_path = tmp_path / 'browser-shot.png'
+    image_path.write_bytes(b'\x89PNG\r\n\x1a\nfakepngdata')
+
+    client = runtime_env['client']
+    container = runtime_env['container']
+    _apply_runtime_overrides(
+        container,
+        config_updates={'provider_stub_mode': False},
+        provider_overrides={'ollama': RecordingProvider()},
+    )
+
+    client.post('/api/v1/events/window-changed', json={'app_name': 'Chrome', 'window_title': 'Ayria Docs', 'url': None})
+    screenshot = client.post(
+        '/api/v1/events/screenshot-captured',
+        json={'image_path': str(image_path), 'captured_at': '2026-03-08T00:00:00Z'},
+    )
+    assert screenshot.status_code == 200
+    assert screenshot.json()['stored'] is True
+
+    response = client.post('/api/v1/chat/send', json={'text': 'help me summarize this', 'image_paths': []})
+    assert response.status_code == 200
+    assert RecordingProvider.seen_text is not None
+    assert 'Recent screenshot summary' in RecordingProvider.seen_text
+
+
+
+def test_proactive_message_suppressed_for_protected_context(runtime_env: dict) -> None:
+    client = runtime_env['client']
+    container = runtime_env['container']
+    _apply_runtime_overrides(
+        container,
+        config_updates={
+            'proactive_enabled': True,
+            'proactive_mode': 'active',
+            'blacklisted_apps': ['SecretsApp'],
+            'proactive_cooldown_seconds': 1,
+        },
+    )
+
+    response = client.post('/api/v1/events/window-changed', json={'app_name': 'SecretsApp', 'window_title': 'vault', 'url': None})
+    assert response.status_code == 200
+    body = response.json()
+    assert body['proactive'] is None
+
+
+def test_runtime_policy_service_allows_light_suggestion_for_visible_context(runtime_env: dict) -> None:
+    container = runtime_env['container']
+    _apply_runtime_overrides(
+        container,
+        config_updates={'proactive_enabled': True, 'proactive_mode': 'active', 'proactive_cooldown_seconds': 1},
+    )
+    container.world_state_repo.update_active_window(
+        ActiveWindow(app_name='Cursor', window_title='main.py', url=None)
+    )
+    decision = container.runtime_policy_service.decide_proactive_observation(
+        world_state=container.context_service.build_world_state(),
+        observation_confidence=0.9,
+        user_is_actively_typing=False,
+        now_ts=1000.0,
+    )
+    assert decision.allowed is True
+    assert decision.response_mode == 'suggest_lightly'
+    assert decision.reason == 'proactive_policy_allowed'
+    assert decision.suggestion is not None
+
+
+def test_runtime_policy_service_stays_silent_for_protected_context(runtime_env: dict) -> None:
+    container = runtime_env['container']
+    _apply_runtime_overrides(
+        container,
+        config_updates={
+            'proactive_enabled': True,
+            'proactive_mode': 'active',
+            'proactive_cooldown_seconds': 1,
+            'blacklisted_apps': ['SecretsApp'],
+        },
+    )
+    container.world_state_repo.update_active_window(
+        ActiveWindow(app_name='SecretsApp', window_title='vault', url=None)
+    )
+    decision = container.runtime_policy_service.decide_proactive_observation(
+        world_state=container.context_service.build_world_state(),
+        observation_confidence=0.9,
+        user_is_actively_typing=False,
+        now_ts=1000.0,
+    )
+    assert decision.allowed is False
+    assert decision.response_mode == 'stay_silent'
+    assert decision.reason == 'context_protected:blacklisted_app'
+
+
+def test_screenshot_ingestion_allowed_path(runtime_client: TestClient, tmp_path) -> None:
+    image_path = tmp_path / 'ok.png'
+    image_path.write_bytes(b'\x89PNG\r\n\x1a\nfakepngdata')
     runtime_client.post('/api/v1/events/window-changed', json={'app_name': 'Cursor', 'window_title': 'editor', 'url': None})
     response = runtime_client.post(
         '/api/v1/events/screenshot-captured',
-        json={'image_path': '/tmp/ok.png', 'captured_at': '2026-03-07T00:00:00Z'},
+        json={'image_path': str(image_path), 'captured_at': '2026-03-07T00:00:00Z'},
     )
     assert response.status_code == 200
     body = response.json()
     assert body['policy_blocked'] is False
+    assert body['provenance_valid'] is True
     assert body['analyzed'] is True
     assert body['stored'] is True
     assert body['world_state']['presence']['mode'] == 'observing'
@@ -327,6 +659,39 @@ def test_screenshot_ingestion_blocked_path(runtime_client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body['policy_blocked'] is True
+    assert body['analyzed'] is False
+    assert body['stored'] is False
+
+
+def test_screenshot_ingestion_rejects_missing_file(runtime_client: TestClient) -> None:
+    runtime_client.post('/api/v1/events/window-changed', json={'app_name': 'Cursor', 'window_title': 'editor', 'url': None})
+    response = runtime_client.post(
+        '/api/v1/events/screenshot-captured',
+        json={'image_path': '/tmp/does-not-exist.png', 'captured_at': '2026-03-07T00:00:00Z'},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body['policy_blocked'] is False
+    assert body['provenance_valid'] is False
+    assert body['provenance_reason'] == 'missing_file'
+    assert body['analyzed'] is False
+    assert body['stored'] is False
+    assert body['world_state']['recent_screenshots'] == []
+
+
+def test_screenshot_ingestion_rejects_unsupported_file_type(runtime_client: TestClient, tmp_path) -> None:
+    fake_file = tmp_path / 'not-image.txt'
+    fake_file.write_text('not an image')
+    runtime_client.post('/api/v1/events/window-changed', json={'app_name': 'Cursor', 'window_title': 'editor', 'url': None})
+    response = runtime_client.post(
+        '/api/v1/events/screenshot-captured',
+        json={'image_path': str(fake_file), 'captured_at': '2026-03-07T00:00:00Z'},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body['policy_blocked'] is False
+    assert body['provenance_valid'] is False
+    assert body['provenance_reason'] == 'unsupported_image_type'
     assert body['analyzed'] is False
     assert body['stored'] is False
 

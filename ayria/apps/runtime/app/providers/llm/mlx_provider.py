@@ -9,10 +9,13 @@ class MLXProvider:
     implemented = False
     supports_images = False
 
-    async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+    def normalize_model_name(self, model: str) -> str:
+        return model
+
+    async def chat(self, messages: list[dict[str, object]], model: str, tools: list[dict[str, object]] | None = None) -> dict[str, object]:
         raise RuntimeError('provider_not_implemented:mlx')
 
-    async def health_check(self, model: str | None = None) -> dict:
+    async def health_check(self, model: str | None = None) -> dict[str, object]:
         return {
             'configured': model is not None,
             'implemented': False,

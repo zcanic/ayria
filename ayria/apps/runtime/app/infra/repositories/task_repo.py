@@ -25,7 +25,7 @@ class TaskRepository:
         self._seq = 0
         self._lock = Lock()
 
-    def create(self, task_type: TaskType, payload: dict, trigger_event_id: str | None = None, priority: int = 5) -> Task:
+    def create(self, task_type: TaskType, payload: dict[str, object], trigger_event_id: str | None = None, priority: int = 5) -> Task:
         with self._lock:
             self._seq += 1
             task_id = f"task_{self._seq:06d}"
@@ -44,7 +44,7 @@ class TaskRepository:
             self._items[task_id] = task
             return task.model_copy(deep=True)
 
-    def update_status(self, task_id: str, status: str, output_payload: dict | None = None) -> Task | None:
+    def update_status(self, task_id: str, status: str, output_payload: dict[str, object] | None = None) -> Task | None:
         with self._lock:
             current = self._items.get(task_id)
             if current is None:
@@ -53,6 +53,24 @@ class TaskRepository:
             updated = current.model_copy(
                 update={
                     'status': status,
+                    'output_payload': next_payload,
+                    'updated_at': _now_iso(),
+                }
+            )
+            self._items[task_id] = updated
+            return updated.model_copy(deep=True)
+
+    def transition_status(self, task_id: str, *, expected_status: str, next_status: str, output_payload: dict[str, object] | None = None) -> Task | None:
+        with self._lock:
+            current = self._items.get(task_id)
+            if current is None:
+                return None
+            if current.status != expected_status:
+                return None
+            next_payload = output_payload if output_payload is not None else current.output_payload
+            updated = current.model_copy(
+                update={
+                    'status': next_status,
                     'output_payload': next_payload,
                     'updated_at': _now_iso(),
                 }

@@ -9,11 +9,19 @@ class TaskService:
     def __init__(self, repo: TaskRepository) -> None:
         self._repo = repo
 
-    def create_task(self, task_type: TaskType, payload: dict, trigger_event_id: str | None = None, priority: int = 5) -> Task:
+    def create_task(self, task_type: TaskType, payload: dict[str, object], trigger_event_id: str | None = None, priority: int = 5) -> Task:
         return self._repo.create(task_type=task_type, payload=payload, trigger_event_id=trigger_event_id, priority=priority)
 
-    def update_task(self, task_id: str, status: TaskStatus, output_payload: dict | None = None) -> Task | None:
+    def update_task(self, task_id: str, status: TaskStatus, output_payload: dict[str, object] | None = None) -> Task | None:
         return self._repo.update_status(task_id=task_id, status=status, output_payload=output_payload)
+
+    def transition_task(self, task_id: str, *, expected_status: TaskStatus, next_status: TaskStatus, output_payload: dict[str, object] | None = None) -> Task | None:
+        return self._repo.transition_status(
+            task_id=task_id,
+            expected_status=expected_status,
+            next_status=next_status,
+            output_payload=output_payload,
+        )
 
     def get_task(self, task_id: str) -> Task | None:
         return self._repo.get(task_id)

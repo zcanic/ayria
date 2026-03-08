@@ -6,6 +6,7 @@ through `messages[].images` as base64-encoded PNG/JPEG content.
 """
 
 import httpx
+import os
 
 
 class OllamaProvider:
@@ -22,11 +23,13 @@ class OllamaProvider:
 
     def __init__(self, base_url: str = 'http://127.0.0.1:11434') -> None:
         self._base_url = base_url.rstrip('/')
+        self._chat_timeout_seconds = float(os.getenv('AYRIA_OLLAMA_CHAT_TIMEOUT_SECONDS', '90'))
+        self._health_timeout_seconds = float(os.getenv('AYRIA_OLLAMA_HEALTH_TIMEOUT_SECONDS', '8'))
 
     def normalize_model_name(self, model: str) -> str:
         return self._MODEL_ALIASES.get(model, model)
 
-    async def chat(self, messages: list[dict], model: str, tools: list[dict] | None = None) -> dict:
+    async def chat(self, messages: list[dict[str, object]], model: str, tools: list[dict[str, object]] | None = None) -> dict[str, object]:
         resolved_model = self.normalize_model_name(model)
         payload = {
             'model': resolved_model,
@@ -37,7 +40,7 @@ class OllamaProvider:
             payload['tools'] = tools
 
         # Local provider calls should never inherit shell proxy settings.
-        async with httpx.AsyncClient(timeout=60.0, trust_env=False) as client:
+        async with httpx.AsyncClient(timeout=self._chat_timeout_seconds, trust_env=False) as client:
             response = await client.post(f'{self._base_url}/api/chat', json=payload)
             response.raise_for_status()
             body = response.json()
@@ -47,15 +50,20 @@ class OllamaProvider:
         if not isinstance(content, str):
             raise RuntimeError('provider_invalid_output:ollama')
 
+        message_tool_calls = message.get('tool_calls') if isinstance(message, dict) else None
+        top_level_tool_calls = body.get('tool_calls')
+        raw_tool_calls = message_tool_calls if isinstance(message_tool_calls, list) else top_level_tool_calls
+        tool_calls = raw_tool_calls if isinstance(raw_tool_calls, list) else []
+
         return {
             'provider': 'ollama',
             'model': resolved_model,
             'message': content,
-            'tools_used': body.get('tool_calls', tools or []),
+            'tools_used': tool_calls,
         }
 
-    async def health_check(self, model: str | None = None) -> dict:
-        async with httpx.AsyncClient(timeout=5.0, trust_env=False) as client:
+    async def health_check(self, model: str | None = None) -> dict[str, object]:
+        async with httpx.AsyncClient(timeout=self._health_timeout_seconds, trust_env=False) as client:
             response = await client.get(f'{self._base_url}/api/tags')
             response.raise_for_status()
             body = response.json()

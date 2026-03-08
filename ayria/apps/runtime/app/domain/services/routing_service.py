@@ -42,7 +42,7 @@ class RoutingService:
         return RouteDecision(
             provider=provider,
             model=default_model,
-            use_tools=False,
+            use_tools=not has_images,
             use_persona_rewrite=True,
             timeout_seconds=30,
             reason=f'local-first chat route via provider={provider} with optional multimodal vision input',

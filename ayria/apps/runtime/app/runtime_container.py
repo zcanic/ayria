@@ -7,6 +7,7 @@ from app.domain.services.permission_policy_service import PermissionPolicyServic
 from app.domain.services.presence_service import PresenceService
 from app.domain.services.proactive_service import ProactiveService
 from app.domain.services.routing_service import RoutingService
+from app.domain.services.runtime_policy_service import RuntimePolicyService
 from app.domain.services.task_service import TaskService
 from app.domain.services.tool_service import ToolService
 from app.infra.repositories.message_repo import MessageRepository
@@ -14,6 +15,7 @@ from app.infra.repositories.task_repo import TaskRepository
 from app.infra.repositories.world_state_repo import WorldStateRepository
 from app.infra.repositories.audit_repo import AuditRepository
 from app.providers.vision.screenshot_analyzer import ScreenshotAnalyzer
+from app.providers.llm.base import LLMProvider
 from app.providers.llm.cloud_provider import CloudProvider
 from app.providers.llm.mlx_provider import MLXProvider
 from app.providers.llm.ollama_provider import OllamaProvider
@@ -32,7 +34,7 @@ class RuntimeContainer:
         self.message_repo = MessageRepository()
         self.audit_repo = AuditRepository()
         self.event_stream = EventStream()
-        self.llm_providers = {
+        self.llm_providers: dict[str, LLMProvider] = {
             'ollama': OllamaProvider(),
             'mlx': MLXProvider(),
             'cloud': CloudProvider(),
@@ -53,6 +55,10 @@ class RuntimeContainer:
         self.persona_service = PersonaService()
         self.permission_policy_service = PermissionPolicyService(self.config)
         self.proactive_service = ProactiveService(proactive_mode=self.config.proactive_mode)
+        self.runtime_policy_service = RuntimePolicyService(
+            presence_service=self.presence_service,
+            proactive_service=self.proactive_service,
+        )
         self.tool_service = ToolService(self.tool_registry, world_state_repo=self.world_state_repo)
         self.model_execution_service = ModelExecutionService(
             provider_stub_mode=self.config.provider_stub_mode,
@@ -70,7 +76,10 @@ class RuntimeContainer:
             routing_service=self.routing_service,
             persona_service=self.persona_service,
             model_execution_service=self.model_execution_service,
+            tool_service=self.tool_service,
+            permission_policy_service=self.permission_policy_service,
             presence_service=self.presence_service,
+            runtime_policy_service=self.runtime_policy_service,
             message_repo=self.message_repo,
             world_state_repo=self.world_state_repo,
             event_stream=self.event_stream,
@@ -80,7 +89,7 @@ class RuntimeContainer:
     def rebuild_runtime_graph(self) -> None:
         self.apply_config(self.config.model_copy(deep=True))
 
-    def override_provider(self, provider_name: str, provider: object) -> None:
+    def override_provider(self, provider_name: str, provider: LLMProvider) -> None:
         self.llm_providers[provider_name] = provider
         self.rebuild_runtime_graph()
 
@@ -112,6 +121,10 @@ class RuntimeContainer:
             )
             next_permission_policy_service = PermissionPolicyService(next_config)
             next_proactive_service = ProactiveService(proactive_mode=next_config.proactive_mode)
+            next_runtime_policy_service = RuntimePolicyService(
+                presence_service=next_presence_service,
+                proactive_service=next_proactive_service,
+            )
             next_screenshot_analyzer = ScreenshotAnalyzer(
                 model_execution_service=next_model_execution_service,
                 provider_name=next_config.screenshot_analysis_provider,
@@ -123,7 +136,10 @@ class RuntimeContainer:
                 routing_service=next_routing_service,
                 persona_service=self.persona_service,
                 model_execution_service=next_model_execution_service,
+                tool_service=self.tool_service,
+                permission_policy_service=next_permission_policy_service,
                 presence_service=next_presence_service,
+                runtime_policy_service=next_runtime_policy_service,
                 message_repo=self.message_repo,
                 world_state_repo=self.world_state_repo,
                 event_stream=self.event_stream,
@@ -136,6 +152,7 @@ class RuntimeContainer:
             self.model_execution_service = next_model_execution_service
             self.permission_policy_service = next_permission_policy_service
             self.proactive_service = next_proactive_service
+            self.runtime_policy_service = next_runtime_policy_service
             self.screenshot_analyzer = next_screenshot_analyzer
             self.orchestrator = next_orchestrator
 
